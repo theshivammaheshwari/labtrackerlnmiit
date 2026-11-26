@@ -34,13 +34,30 @@
 </div>
 <section id="map" class="map" aria-label="90 PC layout"><div id="front">Front of lab</div><div id="rows"></div></section>
 <section id="tray" hidden aria-label="Unplaced PCs"><h2>Unplaced PCs <span id="tray-count"></span></h2><button id="return-pc" hidden>Return selected PC to tray</button><div id="tray-pcs"></div></section>
-<p id="message" role="status"></p><p id="detail">Records isi browser mein save hote hain. File ko ek fixed location se kholo aur backup rakh lo.</p>
+<p id="message" role="status"></p><p id="detail">Connecting to Firebase cloud...</p>
 <dialog id="editor"><form id="form"><h2 id="pc-title"></h2><label>Status <select id="status"><option value="open">Open</option><option value="progress">In progress</option><option value="resolved">Resolved</option><option value="ok">No issue</option></select></label>
 <fieldset id="issues"><legend>Issue type</legend></fieldset>
 <label>Notes (plain text ya Markdown)<textarea id="notes" rows="4" maxlength="3000" placeholder="e.g. Mouse click nahi ho raha. IP assign karna hai."></textarea></label><p id="updated"></p><div class="actions"><button id="cancel" type="button">Cancel</button><button class="primary" type="submit">Save PC</button></div></form></dialog>
 </main>
-<script>
-'use strict';
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
+import { getFirestore, doc, setDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCiXsOK7o-UDfXEYn0oB8CxhlpwCSXo0SY",
+  authDomain: "lab-pc-tracker-lnmiit.firebaseapp.com",
+  projectId: "lab-pc-tracker-lnmiit",
+  storageBucket: "lab-pc-tracker-lnmiit.firebasestorage.app",
+  messagingSenderId: "757846575678",
+  appId: "1:757846575678:web:8011d14a38e88d1d59df6f",
+  measurementId: "G-WNNGX700FT"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const cloudDoc = doc(db, 'labTracker', 'main');
+const setDetail = text => $('detail').textContent = text;
+
 const key = 'lab-pc-tracker-v1';
 const categories = ['Mouse', 'Keyboard', 'IP missing', 'Network', 'Monitor', 'Power', 'Software', 'Other'];
 const labels = {ok:'Unmarked', open:'Open', progress:'In progress', resolved:'Resolved'};
@@ -83,14 +100,49 @@ function validate(data) {
 try { ({records, layout} = decode(JSON.parse(localStorage.getItem(key) || '{}'))); }
 catch { message('Saved records could not be read. Restore a backup if available.'); }
 
+async function syncToCloud(next, nextLayout) {
+  try {
+    setDetail('Saving to Firebase...');
+    await setDoc(cloudDoc, {version:3, records:next, layout:nextLayout});
+    setDetail('Cloud synced (Firebase Firestore) · Real-time active.');
+  } catch (err) {
+    console.error('Firebase save failed:', err);
+    setDetail('Cloud sync failed (saved locally). Check Firestore rules or internet.');
+    message('Cloud sync failed. Saved in this browser.');
+  }
+}
+
 function save(next, nextLayout = layout) {
   try { localStorage.setItem(key, JSON.stringify({version:3, records:next, layout:nextLayout})); }
   catch { message('Browser could not save. Keep this tab open and check browser storage settings.'); return false; }
   records = next;
   layout = nextLayout;
   render();
+  syncToCloud(next, nextLayout);
   return true;
 }
+
+onSnapshot(cloudDoc, snap => {
+  if (!snap.exists()) {
+    setDetail('Firebase connected (no cloud data yet). Save any change to upload.');
+    return;
+  }
+  if (snap.metadata.hasPendingWrites) return;
+  try {
+    const decoded = decode(snap.data());
+    records = decoded.records;
+    layout = decoded.layout;
+    localStorage.setItem(key, JSON.stringify({version:3, records, layout}));
+    render();
+    setDetail('Cloud synced (Firebase Firestore) · Real-time active.');
+  } catch (err) {
+    console.error('Cloud data decode failed:', err);
+    setDetail('Cloud data could not be read.');
+  }
+}, err => {
+  console.error('Firebase listener error:', err);
+  setDetail('Offline or Firestore permission error (using local browser data).');
+});
 
 for (const issue of categories) {
   const label = document.createElement('label');
