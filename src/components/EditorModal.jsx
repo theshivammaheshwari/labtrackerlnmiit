@@ -3,10 +3,10 @@ import { X, Monitor, Save, Check } from 'lucide-react';
 import { CATEGORIES, STATUS_LABELS, pcName } from '../utils/tracker';
 
 const STATUS_OPTIONS = [
-  { value: 'open', label: 'Open Issue', active: 'bg-rose-500/20 border-rose-400 text-rose-200' },
-  { value: 'progress', label: 'In Progress', active: 'bg-amber-500/20 border-amber-400 text-amber-200' },
-  { value: 'resolved', label: 'Resolved', active: 'bg-emerald-500/20 border-emerald-400 text-emerald-200' },
-  { value: 'ok', label: 'Healthy (Clear)', active: 'bg-sky-500/20 border-sky-400 text-sky-200' },
+  { value: 'open', label: 'Open Issue', active: 'bg-[#FFF0F3] border-[#F84464] text-[#D91B42]' },
+  { value: 'progress', label: 'In Progress', active: 'bg-amber-50 border-amber-500 text-amber-800' },
+  { value: 'resolved', label: 'Resolved', active: 'bg-sky-50 border-sky-500 text-sky-800' },
+  { value: 'ok', label: 'Healthy (Clear)', active: 'bg-emerald-50 border-[#1EA83C] text-[#1EA83C]' },
 ];
 
 export default function EditorModal({ pcId, entry, onClose, onSave }) {
@@ -36,21 +36,21 @@ export default function EditorModal({ pcId, entry, onClose, onSave }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1F2533]/60 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-3xl border border-slate-700/70 bg-slate-900/90 backdrop-blur-2xl shadow-2xl shadow-black/60 overflow-hidden"
+        className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/80 bg-slate-900/60">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-[#333545] text-white">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-sky-500/15 border border-sky-400/30 text-sky-400">
+            <div className="p-2 rounded-lg bg-[#F84464] text-white">
               <Monitor className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-white font-mono">{pcName(pcId)}</h2>
-              <p className="text-xs text-slate-400">
+              <h2 className="text-lg font-bold font-mono">{pcName(pcId)}</h2>
+              <p className="text-xs text-slate-300">
                 {entry?.updated
                   ? `Last updated ${new Date(entry.updated).toLocaleString()}`
                   : `Current status: ${STATUS_LABELS[entry?.status || 'ok']}`}
@@ -60,7 +60,7 @@ export default function EditorModal({ pcId, entry, onClose, onSave }) {
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
             aria-label="Close modal"
           >
             <X className="w-5 h-5" />
@@ -69,8 +69,8 @@ export default function EditorModal({ pcId, entry, onClose, onSave }) {
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-              Status
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+              Seat / PC Status
             </label>
             <div className="grid grid-cols-2 gap-2">
               {STATUS_OPTIONS.map((opt) => (
@@ -78,10 +78,10 @@ export default function EditorModal({ pcId, entry, onClose, onSave }) {
                   key={opt.value}
                   type="button"
                   onClick={() => setStatus(opt.value)}
-                  className={`px-3 py-2.5 rounded-xl border text-sm font-medium transition-all flex items-center justify-between ${
+                  className={`px-3 py-2.5 rounded-lg border text-sm font-semibold transition-all flex items-center justify-between ${
                     status === opt.value
                       ? opt.active
-                      : 'border-slate-700/70 bg-slate-800/40 text-slate-300 hover:border-slate-600'
+                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
                   }`}
                 >
                   <span>{opt.label}</span>
@@ -92,7 +92,7 @@ export default function EditorModal({ pcId, entry, onClose, onSave }) {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
               Issue Tags
             </label>
             <div className="flex flex-wrap gap-2">
@@ -103,10 +103,10 @@ export default function EditorModal({ pcId, entry, onClose, onSave }) {
                     key={cat}
                     type="button"
                     onClick={() => toggleIssue(cat)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
                       selected
-                        ? 'bg-sky-500/20 border-sky-400/70 text-sky-200 shadow-sm'
-                        : 'bg-slate-800/50 border-slate-700/70 text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                        ? 'bg-[#F84464] border-[#F84464] text-white shadow-sm'
+                        : 'bg-white border-slate-300 text-slate-600 hover:border-slate-400'
                     }`}
                   >
                     {cat}
@@ -117,7 +117,7 @@ export default function EditorModal({ pcId, entry, onClose, onSave }) {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
               Notes
             </label>
             <textarea
@@ -126,21 +126,21 @@ export default function EditorModal({ pcId, entry, onClose, onSave }) {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. Mouse click nahi ho raha. IP assign karna hai."
-              className="w-full rounded-2xl border border-slate-700/80 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/60 focus:border-sky-500/60 resize-y"
+              className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3.5 py-2.5 text-sm text-[#1F2533] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white resize-y"
             />
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-slate-700 text-sm font-medium text-slate-300 hover:bg-slate-800 transition-colors"
+              className="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-400 hover:to-indigo-400 text-sm font-semibold text-white shadow-lg shadow-sky-500/25 flex items-center gap-2 transition-all"
+              className="px-5 py-2 rounded-lg bg-[#F84464] hover:bg-[#E03554] text-sm font-semibold text-white shadow-sm flex items-center gap-2 transition-colors"
             >
               <Save className="w-4 h-4" />
               Save to Cloud

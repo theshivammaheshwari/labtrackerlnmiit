@@ -9,7 +9,6 @@ import {
   Loader2,
   GripVertical,
   Undo2,
-  Sparkles,
 } from 'lucide-react';
 import { cloudDoc, onSnapshot, setDoc } from './firebase';
 import {
@@ -39,6 +38,16 @@ function loadInitialLocal() {
   }
 }
 
+function rowLabel(rowIndex) {
+  let label = '';
+  let n = rowIndex;
+  do {
+    label = String.fromCharCode(65 + (n % 26)) + label;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return label;
+}
+
 export default function App() {
   const initial = useMemo(() => loadInitialLocal(), []);
   const [records, setRecords] = useState(initial.records);
@@ -57,9 +66,7 @@ export default function App() {
   const [editingPcId, setEditingPcId] = useState(null);
   const fileInputRef = useRef(null);
 
-  const showToast = (msg) => {
-    setToast(msg);
-  };
+  const showToast = (msg) => setToast(msg);
 
   useEffect(() => {
     if (!toast) return;
@@ -67,7 +74,6 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  // Real-time Firebase Firestore listener
   useEffect(() => {
     const unsub = onSnapshot(
       cloudDoc,
@@ -88,10 +94,7 @@ export default function App() {
             STORAGE_KEY,
             JSON.stringify({ version: 3, records: decoded.records, layout: decoded.layout })
           );
-          setCloudState({
-            status: 'synced',
-            text: 'Cloud Synced · Real-time',
-          });
+          setCloudState({ status: 'synced', text: 'Cloud Synced · Live' });
         } catch (err) {
           console.error('Cloud decode error:', err);
           setCloudState({ status: 'error', text: 'Cloud data format error' });
@@ -130,7 +133,7 @@ export default function App() {
       layout: nextLayout,
     })
       .then(() => {
-        setCloudState({ status: 'synced', text: 'Cloud Synced · Real-time' });
+        setCloudState({ status: 'synced', text: 'Cloud Synced · Live' });
       })
       .catch((err) => {
         console.error('Firebase save error:', err);
@@ -289,35 +292,42 @@ export default function App() {
   };
 
   const dense = layout.cols > 14;
+  const rowsArray = useMemo(() => {
+    const list = [];
+    for (let r = 0; r < layout.rows; r++) {
+      list.push(layout.seats.slice(r * layout.cols, (r + 1) * layout.cols));
+    }
+    return list;
+  }, [layout.rows, layout.cols, layout.seats]);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Top Navbar */}
-      <header className="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-950/75 backdrop-blur-2xl">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
+    <div className="min-h-screen flex flex-col bg-[#F5F5FA]">
+      {/* BookMyShow-style Top Navbar */}
+      <header className="sticky top-0 z-30 bg-[#333545] text-white shadow-md">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-gradient-to-br from-sky-500/20 to-indigo-500/20 border border-sky-400/30 text-sky-400 shadow-glow">
-              <Sparkles className="w-5 h-5" />
+            <div className="px-2.5 py-2 rounded-lg bg-[#F84464] text-white font-bold text-sm tracking-tight shadow-sm flex items-center gap-1.5">
+              <Monitor className="w-4 h-4" />
+              <span>LNMIIT</span>
             </div>
             <div>
-              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white">
+              <h1 className="text-base sm:text-lg font-bold tracking-tight text-white">
                 Lab PC Tracker
               </h1>
-              <p className="text-xs text-slate-400">
-                LNMIIT Hardware & Network Command Center
+              <p className="text-[11px] text-slate-300">
+                90-Seat Lab Map · Real-time Issue & Layout Manager
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Cloud Status Pill */}
             <div
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1.5 backdrop-blur-md ${
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1.5 ${
                 cloudState.status === 'synced' || cloudState.status === 'connected'
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
                   : cloudState.status === 'error'
-                  ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                  : 'bg-sky-500/10 border-sky-500/30 text-sky-300'
+                  ? 'bg-[#F84464]/20 border-[#F84464]/50 text-rose-200'
+                  : 'bg-white/10 border-white/20 text-slate-200'
               }`}
             >
               {cloudState.status === 'saving' || cloudState.status === 'connecting' ? (
@@ -339,9 +349,9 @@ export default function App() {
                   JSON.stringify({ version: 3, records, layout }, null, 2)
                 )
               }
-              className="px-3 py-1.5 rounded-xl border border-slate-700/80 bg-slate-900/70 hover:bg-slate-800 text-xs font-medium text-slate-200 flex items-center gap-1.5 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white flex items-center gap-1.5 transition-colors"
             >
-              <Download className="w-3.5 h-3.5 text-sky-400" />
+              <Download className="w-3.5 h-3.5" />
               JSON
             </button>
 
@@ -354,18 +364,18 @@ export default function App() {
                   buildCsv(records)
                 )
               }
-              className="px-3 py-1.5 rounded-xl border border-slate-700/80 bg-slate-900/70 hover:bg-slate-800 text-xs font-medium text-slate-200 flex items-center gap-1.5 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white flex items-center gap-1.5 transition-colors"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <FileSpreadsheet className="w-3.5 h-3.5" />
               CSV
             </button>
 
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="px-3 py-1.5 rounded-xl border border-slate-700/80 bg-slate-900/70 hover:bg-slate-800 text-xs font-medium text-slate-200 flex items-center gap-1.5 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white flex items-center gap-1.5 transition-colors"
             >
-              <Upload className="w-3.5 h-3.5 text-indigo-400" />
+              <Upload className="w-3.5 h-3.5" />
               Restore
             </button>
             <input
@@ -379,7 +389,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6 space-y-5">
+      <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-5 space-y-4">
         <StatsBar
           counts={counts}
           filter={filter}
@@ -402,126 +412,155 @@ export default function App() {
           onBlankLayout={handleBlankLayout}
         />
 
-        {/* Lab Floor Grid */}
-        <section className="rounded-3xl border border-slate-800/80 bg-slate-900/45 backdrop-blur-2xl p-4 sm:p-5 shadow-2xl shadow-black/40">
-          <div className="mb-4 flex items-center justify-center">
-            <div className="px-8 py-1.5 rounded-full border border-slate-700/70 bg-slate-950/80 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
-              Front of Lab · Projector / Instructor Desk
-            </div>
+        {/* BookMyShow-style Seat Map Card */}
+        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+          {/* Legend Bar */}
+          <div className="flex flex-wrap items-center justify-center gap-5 pb-4 mb-5 border-b border-slate-100 text-xs font-medium text-slate-600">
+            <span className="flex items-center gap-2">
+              <span className="w-4 h-4 rounded border-2 border-[#1EA83C] bg-white inline-block" />
+              Healthy
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="w-4 h-4 rounded border-2 border-[#F84464] bg-[#FFF0F3] inline-block" />
+              Open Issue
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="w-4 h-4 rounded border-2 border-amber-500 bg-amber-50 inline-block" />
+              In Progress
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="w-4 h-4 rounded border-2 border-sky-500 bg-sky-50 inline-block" />
+              Resolved
+            </span>
           </div>
 
-          <div
-            className="grid gap-1.5 sm:gap-2"
-            style={{
-              gridTemplateColumns: `repeat(${layout.cols}, minmax(0, 1fr))`,
-            }}
-          >
-            {layout.seats.map((id, index) => {
-              const isDropTarget = arranging && dragOverIndex === index;
+          {/* BookMyShow Curved Screen Indicator */}
+          <div className="mb-6 flex flex-col items-center">
+            <div className="w-full max-w-md h-3 border-t-4 border-sky-300/80 rounded-t-[100%] shadow-[0_-6px_14px_-4px_rgba(56,189,248,0.35)]" />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+              All eyes this way · Front of Lab
+            </span>
+          </div>
 
-              if (!id) {
-                return arranging ? (
-                  <button
-                    key={`empty-${index}`}
-                    type="button"
-                    onClick={() => handleSeatClick(index)}
-                    onDragOver={(e) => {
-                      if (draggedId !== null) e.preventDefault();
-                      setDragOverIndex(index);
-                    }}
-                    onDragLeave={() => setDragOverIndex(null)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setDragOverIndex(null);
-                      if (draggedId !== null) placePC(draggedId, index);
-                      setDraggedId(null);
-                    }}
-                    className={`min-h-[54px] rounded-xl border border-dashed text-xs font-mono transition-all flex items-center justify-center ${
-                      isDropTarget
-                        ? 'border-sky-400 bg-sky-500/20 text-sky-200 scale-[1.03]'
-                        : 'border-slate-700/70 bg-slate-950/40 text-slate-500 hover:border-sky-500/50 hover:text-sky-300'
-                    }`}
-                    title="Empty seat (click or drop PC here)"
-                  >
-                    +
-                  </button>
-                ) : (
-                  <div key={`spacer-${index}`} className="min-h-[54px]" />
-                );
-              }
-
-              const entry = records[id];
-              const state = entry?.status || 'ok';
-              const style = STATUS_STYLES[state];
-              const dimmed =
-                !arranging &&
-                ((filter && state !== filter) || !matchesSearch(id));
-              const isPicked = arranging && picked === id;
-
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={dimmed}
-                  draggable={arranging}
-                  onDragStart={(e) => {
-                    setDraggedId(id);
-                    e.dataTransfer.setData('text/plain', pcName(id));
-                    e.dataTransfer.effectAllowed = 'move';
+          {/* Rows with Cinema Row Letters (A, B, C...) */}
+          <div className="space-y-2 overflow-x-auto pb-2">
+            {rowsArray.map((rowSeats, rIdx) => (
+              <div key={rIdx} className="flex items-center gap-2 sm:gap-3">
+                <span className="w-6 shrink-0 text-center font-mono text-xs font-bold text-slate-400">
+                  {rowLabel(rIdx)}
+                </span>
+                <div
+                  className="flex-1 grid gap-1.5 sm:gap-2"
+                  style={{
+                    gridTemplateColumns: `repeat(${layout.cols}, minmax(0, 1fr))`,
                   }}
-                  onDragEnd={() => {
-                    setDraggedId(null);
-                    setDragOverIndex(null);
-                  }}
-                  onDragOver={(e) => {
-                    if (!arranging || draggedId === null) return;
-                    e.preventDefault();
-                    setDragOverIndex(index);
-                  }}
-                  onDragLeave={() => setDragOverIndex(null)}
-                  onDrop={(e) => {
-                    if (!arranging) return;
-                    e.preventDefault();
-                    setDragOverIndex(null);
-                    if (draggedId !== null) placePC(draggedId, index);
-                    setDraggedId(null);
-                  }}
-                  onClick={() => handleSeatClick(index)}
-                  title={
-                    entry?.issues?.length
-                      ? `${pcName(id)}: ${entry.issues.join(', ')}`
-                      : `${pcName(id)} · ${STATUS_LABELS[state]}`
-                  }
-                  className={`relative min-h-[54px] sm:min-h-[64px] rounded-xl border p-1.5 flex flex-col items-center justify-center gap-0.5 transition-all duration-150 ${
-                    style.card
-                  } ${style.glow} ${
-                    dimmed ? 'opacity-20 grayscale pointer-events-none' : ''
-                  } ${arranging ? 'cursor-grab active:cursor-grabbing' : ''} ${
-                    isPicked ? 'ring-2 ring-sky-400 scale-[1.03]' : ''
-                  } ${
-                    isDropTarget
-                      ? 'ring-2 ring-sky-400 bg-sky-500/20 scale-[1.04]'
-                      : ''
-                  }`}
                 >
-                  <span
-                    className={`absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full ${style.dot}`}
-                  />
-                  {arranging && (
-                    <GripVertical className="w-3 h-3 text-slate-400/70 absolute top-1 left-1" />
-                  )}
-                  <Monitor className={dense ? 'w-3.5 h-3.5' : 'w-4 h-4 sm:w-5 sm:h-5'} />
-                  <span className="font-mono font-semibold text-[10px] sm:text-xs leading-none">
-                    {dense ? String(id).padStart(2, '0') : pcName(id)}
-                  </span>
-                  {!dense && (
-                    <span className="text-[9px] sm:text-[10px] opacity-80 truncate max-w-full">
-                      {STATUS_LABELS[state]}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+                  {rowSeats.map((id, cIdx) => {
+                    const index = rIdx * layout.cols + cIdx;
+                    const isDropTarget = arranging && dragOverIndex === index;
+
+                    if (!id) {
+                      return arranging ? (
+                        <button
+                          key={`empty-${index}`}
+                          type="button"
+                          onClick={() => handleSeatClick(index)}
+                          onDragOver={(e) => {
+                            if (draggedId !== null) e.preventDefault();
+                            setDragOverIndex(index);
+                          }}
+                          onDragLeave={() => setDragOverIndex(null)}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setDragOverIndex(null);
+                            if (draggedId !== null) placePC(draggedId, index);
+                            setDraggedId(null);
+                          }}
+                          className={`min-h-[48px] sm:min-h-[54px] rounded-lg border border-dashed text-xs font-mono transition-all flex items-center justify-center ${
+                            isDropTarget
+                              ? 'border-[#F84464] bg-[#FFF0F3] text-[#F84464] scale-[1.03]'
+                              : 'border-slate-300 bg-slate-50 text-slate-400 hover:border-[#F84464] hover:text-[#F84464]'
+                          }`}
+                          title="Empty seat (click or drop PC here)"
+                        >
+                          +
+                        </button>
+                      ) : (
+                        <div key={`spacer-${index}`} className="min-h-[48px] sm:min-h-[54px]" />
+                      );
+                    }
+
+                    const entry = records[id];
+                    const state = entry?.status || 'ok';
+                    const style = STATUS_STYLES[state];
+                    const dimmed =
+                      !arranging &&
+                      ((filter && state !== filter) || !matchesSearch(id));
+                    const isPicked = arranging && picked === id;
+
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        disabled={dimmed}
+                        draggable={arranging}
+                        onDragStart={(e) => {
+                          setDraggedId(id);
+                          e.dataTransfer.setData('text/plain', pcName(id));
+                          e.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragEnd={() => {
+                          setDraggedId(null);
+                          setDragOverIndex(null);
+                        }}
+                        onDragOver={(e) => {
+                          if (!arranging || draggedId === null) return;
+                          e.preventDefault();
+                          setDragOverIndex(index);
+                        }}
+                        onDragLeave={() => setDragOverIndex(null)}
+                        onDrop={(e) => {
+                          if (!arranging) return;
+                          e.preventDefault();
+                          setDragOverIndex(null);
+                          if (draggedId !== null) placePC(draggedId, index);
+                          setDraggedId(null);
+                        }}
+                        onClick={() => handleSeatClick(index)}
+                        title={
+                          entry?.issues?.length
+                            ? `${pcName(id)}: ${entry.issues.join(', ')}`
+                            : `${pcName(id)} · ${STATUS_LABELS[state]}`
+                        }
+                        className={`relative min-h-[48px] sm:min-h-[54px] rounded-lg border-2 px-1 py-1 flex flex-col items-center justify-center gap-0.5 transition-all duration-150 ${
+                          style.card
+                        } ${style.glow} ${
+                          dimmed ? 'opacity-20 grayscale pointer-events-none' : ''
+                        } ${arranging ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                          isPicked ? 'ring-2 ring-[#F84464] scale-[1.04]' : ''
+                        } ${
+                          isDropTarget
+                            ? 'ring-2 ring-[#F84464] scale-[1.05]'
+                            : ''
+                        }`}
+                      >
+                        {arranging && (
+                          <GripVertical className="w-3 h-3 opacity-50 absolute top-1 left-0.5" />
+                        )}
+                        <span className="font-mono font-bold text-[11px] sm:text-xs leading-none">
+                          {dense ? String(id).padStart(2, '0') : pcName(id)}
+                        </span>
+                        {!dense && (
+                          <span className="text-[9px] sm:text-[10px] font-medium opacity-85 truncate max-w-full">
+                            {STATUS_LABELS[state]}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </section>
 
@@ -537,12 +576,12 @@ export default function App() {
               if (draggedId !== null) placePC(draggedId, -1);
               setDraggedId(null);
             }}
-            className="rounded-3xl border border-slate-800/80 bg-slate-900/55 backdrop-blur-xl p-4 sm:p-5 space-y-3"
+            className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm space-y-3"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-white">Unplaced PCs Tray</h2>
-                <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">
+                <h2 className="text-sm font-bold text-[#1F2533]">Unplaced PCs Tray</h2>
+                <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-[#F5F5FA] text-slate-600 border border-slate-200">
                   {unplacedIds.length}
                 </span>
               </div>
@@ -550,7 +589,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => placePC(picked, -1)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-medium text-white flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-lg bg-[#333545] hover:bg-[#1F2533] text-xs font-medium text-white flex items-center gap-1.5"
                 >
                   <Undo2 className="w-3.5 h-3.5" />
                   Return {pcName(picked)} to tray
@@ -584,9 +623,9 @@ export default function App() {
                           ? setPicked((prev) => (prev === id ? null : id))
                           : setEditingPcId(id)
                       }
-                      className={`px-3 py-2 rounded-xl border text-xs font-mono font-semibold flex items-center gap-1.5 transition-all ${
+                      className={`px-3 py-2 rounded-lg border-2 text-xs font-mono font-bold flex items-center gap-1.5 transition-all ${
                         style.card
-                      } ${isPicked ? 'ring-2 ring-sky-400' : ''}`}
+                      } ${isPicked ? 'ring-2 ring-[#F84464]' : ''}`}
                     >
                       <Monitor className="w-3.5 h-3.5" />
                       {pcName(id)}
@@ -607,7 +646,7 @@ export default function App() {
       />
 
       {toast && (
-        <div className="fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-2xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-xl text-sm text-white shadow-2xl">
+        <div className="fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-[#333545] text-white text-sm font-medium shadow-xl">
           {toast}
         </div>
       )}

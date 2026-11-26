@@ -21,28 +21,28 @@ export const STATUS_LABELS = {
 
 export const STATUS_STYLES = {
   ok: {
-    card: 'bg-slate-900/60 border-slate-700/60 hover:border-sky-400/50 hover:bg-slate-800/80 text-slate-200',
-    badge: 'bg-slate-800/90 text-slate-300 border-slate-700',
-    dot: 'bg-emerald-400',
+    card: 'bg-white border-[#1EA83C] text-[#1EA83C] hover:bg-[#1EA83C] hover:text-white shadow-sm',
+    badge: 'bg-emerald-50 text-[#1EA83C] border-[#1EA83C]/40',
+    dot: 'bg-[#1EA83C]',
     glow: '',
   },
   open: {
-    card: 'bg-rose-950/45 border-rose-500/50 hover:border-rose-400 hover:bg-rose-950/65 text-rose-100 shadow-[0_0_20px_-6px_rgba(244,63,94,0.45)]',
-    badge: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
-    dot: 'bg-rose-400 animate-pulse',
-    glow: 'ring-1 ring-rose-500/30',
+    card: 'bg-[#FFF0F3] border-[#F84464] text-[#D91B42] hover:bg-[#F84464] hover:text-white shadow-sm',
+    badge: 'bg-[#FFF0F3] text-[#D91B42] border-[#F84464]/40',
+    dot: 'bg-[#F84464] animate-pulse',
+    glow: 'ring-1 ring-[#F84464]/25',
   },
   progress: {
-    card: 'bg-amber-950/40 border-amber-500/50 hover:border-amber-400 hover:bg-amber-950/60 text-amber-100 shadow-[0_0_20px_-6px_rgba(245,158,11,0.4)]',
-    badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
-    dot: 'bg-amber-400',
-    glow: 'ring-1 ring-amber-500/30',
+    card: 'bg-amber-50 border-amber-500 text-amber-700 hover:bg-amber-500 hover:text-white shadow-sm',
+    badge: 'bg-amber-50 text-amber-700 border-amber-400',
+    dot: 'bg-amber-500',
+    glow: 'ring-1 ring-amber-400/30',
   },
   resolved: {
-    card: 'bg-emerald-950/40 border-emerald-500/45 hover:border-emerald-400 hover:bg-emerald-950/60 text-emerald-100 shadow-[0_0_18px_-6px_rgba(16,185,129,0.35)]',
-    badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
-    dot: 'bg-emerald-400',
-    glow: 'ring-1 ring-emerald-500/25',
+    card: 'bg-sky-50 border-sky-500 text-sky-700 hover:bg-sky-500 hover:text-white shadow-sm',
+    badge: 'bg-sky-50 text-sky-700 border-sky-400',
+    dot: 'bg-sky-500',
+    glow: 'ring-1 ring-sky-400/25',
   },
 };
 
