@@ -49,7 +49,7 @@ export default function StatsBar({ counts, totalPcs = DEFAULT_TOTAL_PCS, filter,
   const safeTotal = Math.max(1, totalPcs);
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-      {CARDS.map(({ key, label, icon: Icon, accent, border, ring }) => {
+      {CARDS.map(({ key, label, icon: Icon, accent, border, ring }, idx) => {
         const value = key === '' ? totalPcs : counts[key] || 0;
         const active = filter === key;
         return (
@@ -57,7 +57,9 @@ export default function StatsBar({ counts, totalPcs = DEFAULT_TOTAL_PCS, filter,
             key={label}
             type="button"
             onClick={() => onFilterChange(active && key !== '' ? '' : key)}
-            className={`group text-left rounded-xl border bg-white ${border} p-4 shadow-sm transition-all duration-150 ${
+            className={`group text-left rounded-xl border bg-white ${border} p-3.5 sm:p-4 shadow-sm transition-all duration-150 ${
+              idx === 0 ? 'col-span-2 sm:col-span-1' : ''
+            } ${
               active ? `ring-2 ${ring}` : 'hover:-translate-y-0.5 hover:shadow-md'
             }`}
           >

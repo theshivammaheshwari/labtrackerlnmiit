@@ -20,6 +20,8 @@ import {
   Building2,
   StickyNote,
   Lock,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 import {
   auth,
@@ -87,6 +89,7 @@ export default function App() {
   const [filter, setFilter] = useState('');
   const [search, setSearch] = useState('');
   const [arranging, setArranging] = useState(false);
+  const [viewMode, setViewMode] = useState('map'); // 'map' | 'list'
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkSelected, setBulkSelected] = useState([]);
   const [picked, setPicked] = useState(null);
@@ -167,6 +170,7 @@ export default function App() {
 
   const totalPcs = selectedLab?.totalPcs || DEFAULT_TOTAL_PCS;
   const canEdit = Boolean(user && selectedLab && user.uid === selectedLab.ownerUid);
+  const historyMap = selectedLab?.history || {};
 
   // Private In-Charge Notes (ONLY fetched when user is the lab owner)
   useEffect(() => {
@@ -228,7 +232,7 @@ export default function App() {
     showToast('Signed out.');
   };
 
-  const persistLabData = async (nextRecords, nextLayout = layout) => {
+  const persistLabData = async (nextRecords, nextLayout = layout, nextHistory = historyMap) => {
     if (!selectedLab || !canEdit) return;
     setCloudState({ status: 'saving', text: 'Saving to Firebase...' });
     try {
@@ -236,6 +240,7 @@ export default function App() {
         version: 3,
         records: nextRecords,
         layout: nextLayout,
+        history: nextHistory,
         updatedAt: new Date().toISOString(),
       });
       setCloudState({ status: 'synced', text: 'Cloud Synced · Live' });
@@ -534,6 +539,7 @@ export default function App() {
 
   const handleSavePc = (pcId, { status, issues, notes }) => {
     if (!canEdit) return;
+    const now = new Date().toISOString();
     const next = { ...records };
     if (status === 'ok') {
       delete next[pcId];
@@ -542,10 +548,22 @@ export default function App() {
         status,
         issues,
         notes,
-        updated: new Date().toISOString(),
+        updated: now,
       };
     }
-    persistLabData(next);
+    const prevLogs = Array.isArray(historyMap[pcId]) ? historyMap[pcId] : [];
+    const newLog = {
+      status,
+      issues: status === 'ok' ? [] : issues,
+      notes,
+      timestamp: now,
+      by: user?.displayName || user?.email || 'Lab In-Charge',
+    };
+    const nextHistory = {
+      ...historyMap,
+      [pcId]: [newLog, ...prevLogs].slice(0, 50),
+    };
+    persistLabData(next, layout, nextHistory);
     setEditingPcId(null);
     showToast(`${pcName(pcId)} updated.`);
   };
@@ -892,45 +910,128 @@ export default function App() {
             />
 
             {/* BookMyShow-style Seat Map Card */}
-            <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
-              <div className="flex flex-wrap items-center justify-center gap-5 pb-4 mb-5 border-b border-slate-100 text-xs font-medium text-slate-600">
-                <span className="flex items-center gap-2">
-                  <span className="w-4 h-4 rounded border-2 border-[#1EA83C] bg-white inline-block" />
-                  Healthy
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="w-4 h-4 rounded border-2 border-[#F84464] bg-[#FFF0F3] inline-block" />
-                  Open Issue
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="w-4 h-4 rounded border-2 border-amber-500 bg-amber-50 inline-block" />
-                  In Progress
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="w-4 h-4 rounded border-2 border-sky-500 bg-sky-50 inline-block" />
-                  Resolved
-                </span>
-              </div>
+            <section className="rounded-xl border border-slate-200 bg-white p-3.5 sm:p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
+                <div className="flex flex-wrap items-center gap-3 sm:gap-5 text-xs font-medium text-slate-600">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3.5 h-3.5 rounded border-2 border-[#1EA83C] bg-white inline-block" />
+                    Healthy
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3.5 h-3.5 rounded border-2 border-[#F84464] bg-[#FFF0F3] inline-block" />
+                    Open
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3.5 h-3.5 rounded border-2 border-amber-500 bg-amber-50 inline-block" />
+                    In Progress
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3.5 h-3.5 rounded border-2 border-sky-500 bg-sky-50 inline-block" />
+                    Resolved
+                  </span>
+                </div>
 
-              <div className="mb-6 flex flex-col items-center">
-                <div className="w-full max-w-md h-3 border-t-4 border-sky-300/80 rounded-t-[100%] shadow-[0_-6px_14px_-4px_rgba(56,189,248,0.35)]" />
-                <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  All eyes this way · Front of {selectedLab.name}
-                </span>
-              </div>
-
-              <div className="space-y-2 overflow-x-auto pb-2">
-                {rowsArray.map((rowSeats, rIdx) => (
-                  <div key={rIdx} className="flex items-center gap-2 sm:gap-3">
-                    <span className="w-6 shrink-0 text-center font-mono text-xs font-bold text-slate-400">
-                      {rowLabel(rIdx)}
-                    </span>
-                    <div
-                      className="flex-1 grid gap-1.5 sm:gap-2"
-                      style={{
-                        gridTemplateColumns: `repeat(${layout.cols}, minmax(0, 1fr))`,
-                      }}
+                {!arranging && (
+                  <div className="flex items-center gap-1 p-1 rounded-lg bg-[#F5F5FA] border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('map')}
+                      className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition-all ${
+                        viewMode === 'map'
+                          ? 'bg-white text-[#F84464] shadow-sm'
+                          : 'text-slate-600 hover:text-[#1F2533]'
+                      }`}
                     >
+                      <LayoutGrid className="w-3.5 h-3.5" />
+                      Seat Map
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('list')}
+                      className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition-all ${
+                        viewMode === 'list'
+                          ? 'bg-white text-[#F84464] shadow-sm'
+                          : 'text-slate-600 hover:text-[#1F2533]'
+                      }`}
+                    >
+                      <List className="w-3.5 h-3.5" />
+                      Mobile List
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {viewMode === 'list' && !arranging ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {Array.from({ length: totalPcs }, (_, i) => i + 1)
+                    .filter((id) => {
+                      const state = records[id]?.status || 'ok';
+                      return (!filter || state === filter) && matchesSearch(id);
+                    })
+                    .map((id) => {
+                      const entry = records[id];
+                      const state = entry?.status || 'ok';
+                      const style = STATUS_STYLES[state];
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => setEditingPcId(id)}
+                          className="text-left rounded-xl border border-slate-200 bg-[#F5F5FA] hover:bg-white hover:border-[#F84464]/50 p-3 flex items-start justify-between gap-3 transition-all shadow-sm"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-sm text-[#1F2533]">
+                                {pcName(id)}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${style.badge}`}
+                              >
+                                {STATUS_LABELS[state]}
+                              </span>
+                            </div>
+                            {entry?.issues?.length > 0 && (
+                              <p className="mt-1 text-xs font-medium text-[#D91B42] truncate">
+                                {entry.issues.join(' · ')}
+                              </p>
+                            )}
+                            {entry?.notes && (
+                              <p className="mt-0.5 text-xs text-slate-500 line-clamp-1">
+                                {entry.notes}
+                              </p>
+                            )}
+                          </div>
+                          <Monitor className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                        </button>
+                      );
+                    })}
+                </div>
+              ) : (
+                <>
+                  <div className="mb-5 flex flex-col items-center">
+                    <div className="w-full max-w-md h-3 border-t-4 border-sky-300/80 rounded-t-[100%] shadow-[0_-6px_14px_-4px_rgba(56,189,248,0.35)]" />
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400 text-center">
+                      All eyes this way · Front of {selectedLab.name}
+                    </span>
+                    {layout.cols > 6 && (
+                      <span className="sm:hidden mt-1 text-[10px] text-slate-400">
+                        Swipe left/right ↔ to view all {layout.cols} columns
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 overflow-x-auto pb-2 -mx-1 px-1">
+                    {rowsArray.map((rowSeats, rIdx) => (
+                      <div key={rIdx} className="flex items-center gap-2 sm:gap-3 min-w-max sm:min-w-0">
+                        <span className="sticky left-0 z-10 bg-white/95 backdrop-blur-sm w-6 shrink-0 text-center font-mono text-xs font-bold text-slate-500 py-1">
+                          {rowLabel(rIdx)}
+                        </span>
+                        <div
+                          className="flex-1 grid gap-1.5 sm:gap-2"
+                          style={{
+                            gridTemplateColumns: `repeat(${layout.cols}, minmax(${dense ? '48px' : '56px'}, 1fr))`,
+                          }}
+                        >
                       {rowSeats.map((id, cIdx) => {
                         const index = rIdx * layout.cols + cIdx;
                         const isDropTarget = canEdit && arranging && dragOverIndex === index;
@@ -1045,6 +1146,8 @@ export default function App() {
                   </div>
                 ))}
               </div>
+                </>
+              )}
             </section>
 
             {/* Unplaced PCs Tray */}
@@ -1154,6 +1257,7 @@ export default function App() {
       <EditorModal
         pcId={editingPcId}
         entry={editingPcId ? records[editingPcId] : null}
+        history={editingPcId ? historyMap[editingPcId] || [] : []}
         readOnly={!canEdit}
         onClose={() => setEditingPcId(null)}
         onSave={handleSavePc}
