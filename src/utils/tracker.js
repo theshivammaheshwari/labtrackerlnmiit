@@ -1,5 +1,5 @@
 export const STORAGE_KEY = 'lab-pc-tracker-v1';
-export const TOTAL_PCS = 90;
+export const DEFAULT_TOTAL_PCS = 90;
 
 export const CATEGORIES = [
   'Mouse',
@@ -46,11 +46,14 @@ export const STATUS_STYLES = {
   },
 };
 
-export const defaultLayout = () => ({
-  rows: 9,
-  cols: 10,
-  seats: Array.from({ length: TOTAL_PCS }, (_, index) => index + 1),
-});
+export const defaultLayout = (totalPcs = DEFAULT_TOTAL_PCS) => {
+  const cols = totalPcs <= 20 ? Math.min(totalPcs, 5) : 10;
+  const rows = Math.max(1, Math.ceil(totalPcs / cols));
+  const seats = Array.from({ length: rows * cols }, (_, index) =>
+    index < totalPcs ? index + 1 : null
+  );
+  return { rows, cols, seats };
+};
 
 export function validDimensions(rows, cols) {
   return (
@@ -63,14 +66,14 @@ export function validDimensions(rows, cols) {
   );
 }
 
-export function validateRecords(data) {
+export function validateRecords(data, totalPcs = DEFAULT_TOTAL_PCS) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw new Error('Invalid backup records');
   }
   for (const [id, entry] of Object.entries(data)) {
     if (
-      !/^[1-9]\d?$/.test(id) ||
-      Number(id) > TOTAL_PCS ||
+      !/^[1-9]\d*$/.test(id) ||
+      Number(id) > totalPcs ||
       !entry ||
       !Object.hasOwn(STATUS_LABELS, entry.status) ||
       !Array.isArray(entry.issues) ||
@@ -86,11 +89,11 @@ export function validateRecords(data) {
   return data;
 }
 
-export function decodeTrackerData(data) {
+export function decodeTrackerData(data, totalPcs = DEFAULT_TOTAL_PCS) {
   if (![2, 3].includes(data?.version)) {
     return {
-      records: validateRecords(data || {}),
-      layout: defaultLayout(),
+      records: validateRecords(data || {}, totalPcs),
+      layout: defaultLayout(totalPcs),
       legacy: true,
     };
   }
@@ -100,13 +103,13 @@ export function decodeTrackerData(data) {
     !validDimensions(rows, cols) ||
     !Array.isArray(seats) ||
     seats.length !== rows * cols ||
-    seats.some((n) => n !== null && (!Number.isInteger(n) || n < 1 || n > TOTAL_PCS)) ||
+    seats.some((n) => n !== null && (!Number.isInteger(n) || n < 1 || n > totalPcs)) ||
     new Set(nonNullSeats).size !== nonNullSeats.length
   ) {
     throw new Error('Invalid layout');
   }
   return {
-    records: validateRecords(data.records || {}),
+    records: validateRecords(data.records || {}, totalPcs),
     layout: { rows, cols, seats },
     legacy: false,
   };
@@ -123,13 +126,13 @@ export function downloadFile(name, type, text) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function buildCsv(records) {
+export function buildCsv(records, totalPcs = DEFAULT_TOTAL_PCS) {
   const csvCell = (value) => {
     const text = String(value);
     return `"${/^\s*[=+@-]/.test(text) ? "'" : ''}${text.replaceAll('"', '""')}"`;
   };
   const lines = [['PC', 'Status', 'Issues', 'Notes', 'Updated']];
-  for (let id = 1; id <= TOTAL_PCS; id++) {
+  for (let id = 1; id <= totalPcs; id++) {
     const entry = records[id];
     lines.push([
       pcName(id),

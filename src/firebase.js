@@ -1,5 +1,23 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import {
+  getFirestore,
+  collection,
+  doc,
+  addDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  orderBy,
+} from 'firebase/firestore';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+} from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyCiXsOK7o-UDfXEYn0oB8CxhlpwCSXo0SY',
@@ -13,5 +31,25 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
-export const cloudDoc = doc(db, 'labTracker', 'main');
-export { setDoc, onSnapshot };
+export const auth = getAuth(app);
+export const labsCollection = collection(db, 'labs');
+
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  hd: 'lnmiit.ac.in',
+  prompt: 'select_account',
+});
+
+export {
+  doc,
+  addDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+};

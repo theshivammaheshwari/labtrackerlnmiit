@@ -1,6 +1,6 @@
 import React from 'react';
 import { Monitor, AlertTriangle, Clock, CheckCircle2, ShieldCheck } from 'lucide-react';
-import { TOTAL_PCS } from '../utils/tracker';
+import { DEFAULT_TOTAL_PCS } from '../utils/tracker';
 
 const CARDS = [
   {
@@ -45,11 +45,12 @@ const CARDS = [
   },
 ];
 
-export default function StatsBar({ counts, filter, onFilterChange }) {
+export default function StatsBar({ counts, totalPcs = DEFAULT_TOTAL_PCS, filter, onFilterChange }) {
+  const safeTotal = Math.max(1, totalPcs);
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
       {CARDS.map(({ key, label, icon: Icon, accent, border, ring }) => {
-        const value = key === '' ? TOTAL_PCS : counts[key] || 0;
+        const value = key === '' ? totalPcs : counts[key] || 0;
         const active = filter === key;
         return (
           <button
@@ -72,7 +73,7 @@ export default function StatsBar({ counts, filter, onFilterChange }) {
               </span>
               {key !== '' && (
                 <span className="text-xs text-slate-400 font-mono">
-                  {Math.round((value / TOTAL_PCS) * 100)}%
+                  {Math.round((value / safeTotal) * 100)}%
                 </span>
               )}
             </div>

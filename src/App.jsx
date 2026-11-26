@@ -9,13 +9,36 @@ import {
   Loader2,
   GripVertical,
   Undo2,
+  Plus,
+  Pencil,
+  Trash2,
+  MapPin,
+  UserCheck,
+  Phone,
+  LogIn,
+  LogOut,
+  Building2,
 } from 'lucide-react';
-import { cloudDoc, onSnapshot, setDoc } from './firebase';
 import {
-  STORAGE_KEY,
+  auth,
+  db,
+  labsCollection,
+  googleProvider,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+} from './firebase';
+import {
+  DEFAULT_TOTAL_PCS,
   STATUS_LABELS,
   STATUS_STYLES,
-  TOTAL_PCS,
   buildCsv,
   decodeTrackerData,
   defaultLayout,
@@ -26,16 +49,13 @@ import {
 import StatsBar from './components/StatsBar';
 import LayoutToolbar from './components/LayoutToolbar';
 import EditorModal from './components/EditorModal';
+import LabProfileModal from './components/LabProfileModal';
 
-function loadInitialLocal() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { records: {}, layout: defaultLayout() };
-    const decoded = decodeTrackerData(JSON.parse(raw));
-    return { records: decoded.records, layout: decoded.layout };
-  } catch {
-    return { records: {}, layout: defaultLayout() };
-  }
+const ALLOWED_DOMAIN = '@lnmiit.ac.in';
+const SELECTED_LAB_KEY = 'lab-tracker-selected-lab';
+
+function isAllowedEmail(email) {
+  return typeof email === 'string' && email.toLowerCase().endsWith(ALLOWED_DOMAIN);
 }
 
 function rowLabel(rowIndex) {
@@ -49,9 +69,12 @@ function rowLabel(rowIndex) {
 }
 
 export default function App() {
-  const initial = useMemo(() => loadInitialLocal(), []);
-  const [records, setRecords] = useState(initial.records);
-  const [layout, setLayout] = useState(initial.layout);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [labs, setLabs] = useState([]);
+  const [selectedLabId, setSelectedLabId] = useState(
+    () => localStorage.getItem(SELECTED_LAB_KEY) || ''
+  );
   const [cloudState, setCloudState] = useState({
     status: 'connecting',
     text: 'Connecting to Firebase...',
@@ -64,88 +87,194 @@ export default function App() {
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [editingPcId, setEditingPcId] = useState(null);
+  const [profileModal, setProfileModal] = useState({ open: false, mode: 'create' });
   const fileInputRef = useRef(null);
 
   const showToast = (msg) => setToast(msg);
 
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(''), 3200);
+    const timer = setTimeout(() => setToast(''), 3600);
     return () => clearTimeout(timer);
   }, [toast]);
 
+  // Listen to Firebase Auth and enforce @lnmiit.ac.in domain
   useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser && !isAllowedEmail(currentUser.email)) {
+        await signOut(auth);
+        setUser(null);
+        setAuthLoading(false);
+        showToast('Only @lnmiit.ac.in Google accounts are allowed.');
+        return;
+      }
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  // Listen to all labs in Firestore (publicly readable)
+  useEffect(() => {
+    const q = query(labsCollection, orderBy('name'));
     const unsub = onSnapshot(
-      cloudDoc,
+      q,
       (snap) => {
-        if (!snap.exists()) {
-          setCloudState({
-            status: 'connected',
-            text: 'Firebase ready · Save a change to sync',
-          });
-          return;
-        }
-        if (snap.metadata.hasPendingWrites) return;
-        try {
-          const decoded = decodeTrackerData(snap.data());
-          setRecords(decoded.records);
-          setLayout(decoded.layout);
-          localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({ version: 3, records: decoded.records, layout: decoded.layout })
-          );
-          setCloudState({ status: 'synced', text: 'Cloud Synced · Live' });
-        } catch (err) {
-          console.error('Cloud decode error:', err);
-          setCloudState({ status: 'error', text: 'Cloud data format error' });
-        }
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setLabs(list);
+        setCloudState({ status: 'synced', text: 'Cloud Synced · Live' });
+        setSelectedLabId((prev) => {
+          if (prev && list.some((l) => l.id === prev)) return prev;
+          return list[0]?.id || '';
+        });
       },
       (err) => {
-        console.error('Firestore listener error:', err);
+        console.error('Firestore labs error:', err);
         setCloudState({
           status: 'error',
           text:
             err?.code === 'permission-denied'
               ? 'Firestore permission denied (check Rules)'
-              : 'Offline · Using local cache',
+              : 'Offline · Could not load labs',
         });
       }
     );
     return () => unsub();
   }, []);
 
-  const persist = (nextRecords, nextLayout = layout) => {
-    setRecords(nextRecords);
-    setLayout(nextLayout);
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ version: 3, records: nextRecords, layout: nextLayout })
-      );
-    } catch {
-      showToast('Browser storage full.');
+  useEffect(() => {
+    if (selectedLabId) {
+      localStorage.setItem(SELECTED_LAB_KEY, selectedLabId);
     }
+    setArranging(false);
+    setPicked(null);
+  }, [selectedLabId]);
 
+  const selectedLab = useMemo(
+    () => labs.find((l) => l.id === selectedLabId) || null,
+    [labs, selectedLabId]
+  );
+
+  const totalPcs = selectedLab?.totalPcs || DEFAULT_TOTAL_PCS;
+  const canEdit = Boolean(user && selectedLab && user.uid === selectedLab.ownerUid);
+
+  const { records, layout } = useMemo(() => {
+    if (!selectedLab) {
+      return { records: {}, layout: defaultLayout(DEFAULT_TOTAL_PCS) };
+    }
+    try {
+      const decoded = decodeTrackerData(
+        { version: 3, records: selectedLab.records || {}, layout: selectedLab.layout },
+        totalPcs
+      );
+      return { records: decoded.records, layout: decoded.layout };
+    } catch {
+      return { records: {}, layout: defaultLayout(totalPcs) };
+    }
+  }, [selectedLab, totalPcs]);
+
+  const handleGoogleLogin = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      if (!isAllowedEmail(result.user?.email)) {
+        await signOut(auth);
+        showToast('Access denied: Only @lnmiit.ac.in Google accounts are allowed.');
+        return;
+      }
+      showToast(`Signed in as ${result.user.displayName || result.user.email}`);
+    } catch (err) {
+      if (err?.code !== 'auth/popup-closed-by-user') {
+        console.error('Google Sign-In failed:', err);
+        showToast('Google Sign-In failed. Enable Google Auth in Firebase Console.');
+      }
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setArranging(false);
+    setPicked(null);
+    showToast('Signed out.');
+  };
+
+  const persistLabData = async (nextRecords, nextLayout = layout) => {
+    if (!selectedLab || !canEdit) return;
     setCloudState({ status: 'saving', text: 'Saving to Firebase...' });
-    setDoc(cloudDoc, {
-      version: 3,
-      records: nextRecords,
-      layout: nextLayout,
-    })
-      .then(() => {
-        setCloudState({ status: 'synced', text: 'Cloud Synced · Live' });
-      })
-      .catch((err) => {
-        console.error('Firebase save error:', err);
-        setCloudState({
-          status: 'error',
-          text:
-            err?.code === 'permission-denied'
-              ? 'Firestore permission denied'
-              : 'Cloud save failed (saved locally)',
-        });
-        showToast('Saved locally; Firebase sync failed.');
+    try {
+      await updateDoc(doc(db, 'labs', selectedLab.id), {
+        version: 3,
+        records: nextRecords,
+        layout: nextLayout,
+        updatedAt: new Date().toISOString(),
       });
+      setCloudState({ status: 'synced', text: 'Cloud Synced · Live' });
+    } catch (err) {
+      console.error('Firebase save error:', err);
+      setCloudState({
+        status: 'error',
+        text:
+          err?.code === 'permission-denied'
+            ? 'Permission denied (owner only)'
+            : 'Cloud save failed',
+      });
+      showToast('Could not save changes to Firebase.');
+    }
+  };
+
+  const handleSaveLabProfile = async (formValues) => {
+    if (!user) return;
+    try {
+      if (profileModal.mode === 'edit' && selectedLab && canEdit) {
+        await updateDoc(doc(db, 'labs', selectedLab.id), {
+          name: formValues.name,
+          location: formValues.location,
+          ownerName: formValues.ownerName,
+          ownerPhone: formValues.ownerPhone,
+          updatedAt: new Date().toISOString(),
+        });
+        showToast('Lab profile updated.');
+      } else {
+        const now = new Date().toISOString();
+        const created = await addDoc(labsCollection, {
+          name: formValues.name,
+          location: formValues.location,
+          ownerName: formValues.ownerName,
+          ownerPhone: formValues.ownerPhone,
+          ownerEmail: user.email,
+          ownerUid: user.uid,
+          totalPcs: formValues.totalPcs,
+          version: 3,
+          records: {},
+          layout: defaultLayout(formValues.totalPcs),
+          createdAt: now,
+          updatedAt: now,
+        });
+        setSelectedLabId(created.id);
+        showToast(`Lab "${formValues.name}" created!`);
+      }
+      setProfileModal({ open: false, mode: 'create' });
+    } catch (err) {
+      console.error('Save lab profile error:', err);
+      showToast('Failed to save lab. Check Firestore rules.');
+    }
+  };
+
+  const handleDeleteLab = async () => {
+    if (!selectedLab || !canEdit) return;
+    if (
+      !window.confirm(
+        `Delete "${selectedLab.name}" permanently? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await deleteDoc(doc(db, 'labs', selectedLab.id));
+      showToast(`Lab "${selectedLab.name}" deleted.`);
+    } catch (err) {
+      console.error('Delete lab error:', err);
+      showToast('Failed to delete lab.');
+    }
   };
 
   const placedSet = useMemo(
@@ -155,20 +284,20 @@ export default function App() {
 
   const unplacedIds = useMemo(() => {
     const all = [];
-    for (let id = 1; id <= TOTAL_PCS; id++) {
+    for (let id = 1; id <= totalPcs; id++) {
       if (!placedSet.has(id)) all.push(id);
     }
     return all;
-  }, [placedSet]);
+  }, [placedSet, totalPcs]);
 
   const counts = useMemo(() => {
     const c = { ok: 0, open: 0, progress: 0, resolved: 0 };
-    for (let id = 1; id <= TOTAL_PCS; id++) {
+    for (let id = 1; id <= totalPcs; id++) {
       const st = records[id]?.status || 'ok';
       c[st] = (c[st] || 0) + 1;
     }
     return c;
-  }, [records]);
+  }, [records, totalPcs]);
 
   const matchesSearch = (id) => {
     const q = search.trim().toLowerCase();
@@ -183,7 +312,7 @@ export default function App() {
   };
 
   const placePC = (id, targetIndex) => {
-    if (!id) return;
+    if (!id || !canEdit) return;
     const seats = [...layout.seats];
     const origin = seats.indexOf(id);
     if (origin === targetIndex) return;
@@ -194,14 +323,14 @@ export default function App() {
       seats[targetIndex] = id;
     }
     setPicked(null);
-    persist(records, { ...layout, seats });
+    persistLabData(records, { ...layout, seats });
     showToast(
       targetIndex >= 0 ? `${pcName(id)} placed.` : `${pcName(id)} moved to tray.`
     );
   };
 
   const handleSeatClick = (index) => {
-    if (!arranging) {
+    if (!arranging || !canEdit) {
       const id = layout.seats[index];
       if (id) setEditingPcId(id);
       return;
@@ -215,6 +344,7 @@ export default function App() {
   };
 
   const handleResize = (rows, cols) => {
+    if (!canEdit) return;
     if (!validDimensions(rows, cols)) {
       showToast('Use 1–30 rows and 1–60 columns.');
       return;
@@ -229,7 +359,7 @@ export default function App() {
       else displaced++;
     });
     setPicked(null);
-    persist(records, { rows, cols, seats });
+    persistLabData(records, { rows, cols, seats });
     showToast(
       displaced
         ? `Resized to ${rows}×${cols}. ${displaced} PC(s) moved to tray.`
@@ -238,22 +368,25 @@ export default function App() {
   };
 
   const handleBlankLayout = () => {
+    if (!canEdit) return;
     if (!window.confirm('Move all PCs to the tray? Issue records will be kept.')) return;
     const rows = Math.max(layout.rows, 9);
     const cols = Math.max(layout.cols, 12);
     setPicked(null);
-    persist(records, { rows, cols, seats: Array(rows * cols).fill(null) });
+    persistLabData(records, { rows, cols, seats: Array(rows * cols).fill(null) });
     showToast('Canvas cleared. Drag PCs from the tray.');
   };
 
   const handleResetLayout = () => {
-    if (!window.confirm('Reset PC positions to 9 × 10? Issue records will be kept.')) return;
+    if (!canEdit) return;
+    if (!window.confirm('Reset PC positions to default? Issue records will be kept.')) return;
     setPicked(null);
-    persist(records, defaultLayout());
-    showToast('Default 9×10 layout restored.');
+    persistLabData(records, defaultLayout(totalPcs));
+    showToast('Default layout restored.');
   };
 
   const handleSavePc = (pcId, { status, issues, notes }) => {
+    if (!canEdit) return;
     const next = { ...records };
     if (status === 'ok') {
       delete next[pcId];
@@ -265,7 +398,7 @@ export default function App() {
         updated: new Date().toISOString(),
       };
     }
-    persist(next);
+    persistLabData(next);
     setEditingPcId(null);
     showToast(`${pcName(pcId)} updated.`);
   };
@@ -273,17 +406,17 @@ export default function App() {
   const handleRestore = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file) return;
+    if (!file || !canEdit) return;
     try {
       if (file.size > 1_500_000) throw new Error('Too large');
-      const decoded = decodeTrackerData(JSON.parse(await file.text()));
+      const decoded = decodeTrackerData(JSON.parse(await file.text()), totalPcs);
       if (
         window.confirm(
-          'Restore this backup? It replaces current PC records and layout.'
+          'Restore this backup? It replaces current PC records and layout for this lab.'
         )
       ) {
         setPicked(null);
-        persist(decoded.records, decoded.legacy ? layout : decoded.layout);
+        persistLabData(decoded.records, decoded.legacy ? layout : decoded.layout);
         showToast('Backup restored and synced to cloud.');
       }
     } catch {
@@ -302,7 +435,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F5F5FA]">
-      {/* BookMyShow-style Top Navbar */}
+      {/* BookMyShow-style Top Navbar with Top-Right Google Sign-In */}
       <header className="sticky top-0 z-30 bg-[#333545] text-white shadow-md">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -315,14 +448,15 @@ export default function App() {
                 Lab PC Tracker
               </h1>
               <p className="text-[11px] text-slate-300">
-                90-Seat Lab Map · Real-time Issue & Layout Manager
+                Public Lab Status · @lnmiit.ac.in Staff Management
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Cloud Status Pill */}
             <div
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1.5 ${
+              className={`hidden md:flex px-3 py-1.5 rounded-full text-xs font-medium border items-center gap-1.5 ${
                 cloudState.status === 'synced' || cloudState.status === 'connected'
                   ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
                   : cloudState.status === 'error'
@@ -340,313 +474,511 @@ export default function App() {
               <span>{cloudState.text}</span>
             </div>
 
-            <button
-              type="button"
-              onClick={() =>
-                downloadFile(
-                  'lab-pc-backup.json',
-                  'application/json',
-                  JSON.stringify({ version: 3, records, layout }, null, 2)
-                )
-              }
-              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white flex items-center gap-1.5 transition-colors"
-            >
-              <Download className="w-3.5 h-3.5" />
-              JSON
-            </button>
+            {selectedLab && (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadFile(
+                      `${selectedLab.name.replace(/\s+/g, '-').toLowerCase()}-backup.json`,
+                      'application/json',
+                      JSON.stringify({ version: 3, records, layout }, null, 2)
+                    )
+                  }
+                  className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white flex items-center gap-1.5 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  JSON
+                </button>
 
-            <button
-              type="button"
-              onClick={() =>
-                downloadFile(
-                  'lab-pc-report.csv',
-                  'text/csv;charset=utf-8',
-                  buildCsv(records)
-                )
-              }
-              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white flex items-center gap-1.5 transition-colors"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              CSV
-            </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadFile(
+                      `${selectedLab.name.replace(/\s+/g, '-').toLowerCase()}-report.csv`,
+                      'text/csv;charset=utf-8',
+                      buildCsv(records, totalPcs)
+                    )
+                  }
+                  className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white flex items-center gap-1.5 transition-colors"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  CSV
+                </button>
 
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white flex items-center gap-1.5 transition-colors"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              Restore
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={handleRestore}
-            />
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white flex items-center gap-1.5 transition-colors"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    Restore
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={handleRestore}
+                />
+              </>
+            )}
+
+            {/* BookMyShow-style Top-Right Google Sign-In */}
+            {authLoading ? (
+              <div className="px-3 py-1.5 rounded-lg bg-white/10 text-xs text-slate-300">
+                Checking auth...
+              </div>
+            ) : user ? (
+              <div className="flex items-center gap-2 pl-2 border-l border-white/15">
+                {user.photoURL ? (
+                  <img
+                    src={user.photoURL}
+                    alt={user.displayName || 'User'}
+                    className="w-7 h-7 rounded-full border border-white/30"
+                  />
+                ) : null}
+                <div className="hidden sm:block text-left leading-tight">
+                  <div className="text-xs font-semibold text-white">
+                    {user.displayName || 'LNMIIT User'}
+                  </div>
+                  <div className="text-[10px] text-slate-300">{user.email}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-[#F84464] text-xs font-semibold text-white flex items-center gap-1.5 transition-colors"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Sign out
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                className="px-4 py-1.5 rounded-lg bg-[#F84464] hover:bg-[#E03554] text-xs font-semibold text-white shadow-sm flex items-center gap-1.5 transition-colors"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                Sign in (@lnmiit.ac.in)
+              </button>
+            )}
           </div>
         </div>
       </header>
 
       <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-5 space-y-4">
-        <StatsBar
-          counts={counts}
-          filter={filter}
-          onFilterChange={setFilter}
-        />
+        {/* Lab Selector & Lab Profile Card */}
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
+            <div className="p-2.5 rounded-lg bg-[#FFF0F3] text-[#F84464]">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-[220px] max-w-md">
+              <label
+                htmlFor="lab-select"
+                className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1"
+              >
+                Select Lab to View
+              </label>
+              <select
+                id="lab-select"
+                value={selectedLabId}
+                onChange={(e) => setSelectedLabId(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3 py-2 text-sm font-semibold text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
+              >
+                {labs.length === 0 ? (
+                  <option value="">No labs available yet</option>
+                ) : (
+                  labs.map((lab) => (
+                    <option key={lab.id} value={lab.id}>
+                      {lab.name} — {lab.location}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
 
-        <LayoutToolbar
-          arranging={arranging}
-          onToggleArranging={() => {
-            setArranging((v) => !v);
-            setPicked(null);
-          }}
-          filter={filter}
-          onFilterChange={setFilter}
-          search={search}
-          onSearchChange={setSearch}
-          layout={layout}
-          onResize={handleResize}
-          onResetLayout={handleResetLayout}
-          onBlankLayout={handleBlankLayout}
-        />
-
-        {/* BookMyShow-style Seat Map Card */}
-        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
-          {/* Legend Bar */}
-          <div className="flex flex-wrap items-center justify-center gap-5 pb-4 mb-5 border-b border-slate-100 text-xs font-medium text-slate-600">
-            <span className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded border-2 border-[#1EA83C] bg-white inline-block" />
-              Healthy
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded border-2 border-[#F84464] bg-[#FFF0F3] inline-block" />
-              Open Issue
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded border-2 border-amber-500 bg-amber-50 inline-block" />
-              In Progress
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded border-2 border-sky-500 bg-sky-50 inline-block" />
-              Resolved
-            </span>
-          </div>
-
-          {/* BookMyShow Curved Screen Indicator */}
-          <div className="mb-6 flex flex-col items-center">
-            <div className="w-full max-w-md h-3 border-t-4 border-sky-300/80 rounded-t-[100%] shadow-[0_-6px_14px_-4px_rgba(56,189,248,0.35)]" />
-            <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-              All eyes this way · Front of Lab
-            </span>
-          </div>
-
-          {/* Rows with Cinema Row Letters (A, B, C...) */}
-          <div className="space-y-2 overflow-x-auto pb-2">
-            {rowsArray.map((rowSeats, rIdx) => (
-              <div key={rIdx} className="flex items-center gap-2 sm:gap-3">
-                <span className="w-6 shrink-0 text-center font-mono text-xs font-bold text-slate-400">
-                  {rowLabel(rIdx)}
+            {selectedLab && (
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-slate-600 pl-1">
+                <span className="flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-[#F84464]" />
+                  <strong className="text-[#1F2533]">{selectedLab.location}</strong>
                 </span>
-                <div
-                  className="flex-1 grid gap-1.5 sm:gap-2"
-                  style={{
-                    gridTemplateColumns: `repeat(${layout.cols}, minmax(0, 1fr))`,
-                  }}
-                >
-                  {rowSeats.map((id, cIdx) => {
-                    const index = rIdx * layout.cols + cIdx;
-                    const isDropTarget = arranging && dragOverIndex === index;
-
-                    if (!id) {
-                      return arranging ? (
-                        <button
-                          key={`empty-${index}`}
-                          type="button"
-                          onClick={() => handleSeatClick(index)}
-                          onDragOver={(e) => {
-                            if (draggedId !== null) e.preventDefault();
-                            setDragOverIndex(index);
-                          }}
-                          onDragLeave={() => setDragOverIndex(null)}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            setDragOverIndex(null);
-                            if (draggedId !== null) placePC(draggedId, index);
-                            setDraggedId(null);
-                          }}
-                          className={`min-h-[48px] sm:min-h-[54px] rounded-lg border border-dashed text-xs font-mono transition-all flex items-center justify-center ${
-                            isDropTarget
-                              ? 'border-[#F84464] bg-[#FFF0F3] text-[#F84464] scale-[1.03]'
-                              : 'border-slate-300 bg-slate-50 text-slate-400 hover:border-[#F84464] hover:text-[#F84464]'
-                          }`}
-                          title="Empty seat (click or drop PC here)"
-                        >
-                          +
-                        </button>
-                      ) : (
-                        <div key={`spacer-${index}`} className="min-h-[48px] sm:min-h-[54px]" />
-                      );
-                    }
-
-                    const entry = records[id];
-                    const state = entry?.status || 'ok';
-                    const style = STATUS_STYLES[state];
-                    const dimmed =
-                      !arranging &&
-                      ((filter && state !== filter) || !matchesSearch(id));
-                    const isPicked = arranging && picked === id;
-
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        disabled={dimmed}
-                        draggable={arranging}
-                        onDragStart={(e) => {
-                          setDraggedId(id);
-                          e.dataTransfer.setData('text/plain', pcName(id));
-                          e.dataTransfer.effectAllowed = 'move';
-                        }}
-                        onDragEnd={() => {
-                          setDraggedId(null);
-                          setDragOverIndex(null);
-                        }}
-                        onDragOver={(e) => {
-                          if (!arranging || draggedId === null) return;
-                          e.preventDefault();
-                          setDragOverIndex(index);
-                        }}
-                        onDragLeave={() => setDragOverIndex(null)}
-                        onDrop={(e) => {
-                          if (!arranging) return;
-                          e.preventDefault();
-                          setDragOverIndex(null);
-                          if (draggedId !== null) placePC(draggedId, index);
-                          setDraggedId(null);
-                        }}
-                        onClick={() => handleSeatClick(index)}
-                        title={
-                          entry?.issues?.length
-                            ? `${pcName(id)}: ${entry.issues.join(', ')}`
-                            : `${pcName(id)} · ${STATUS_LABELS[state]}`
-                        }
-                        className={`relative min-h-[48px] sm:min-h-[54px] rounded-lg border-2 px-1 py-1 flex flex-col items-center justify-center gap-0.5 transition-all duration-150 ${
-                          style.card
-                        } ${style.glow} ${
-                          dimmed ? 'opacity-20 grayscale pointer-events-none' : ''
-                        } ${arranging ? 'cursor-grab active:cursor-grabbing' : ''} ${
-                          isPicked ? 'ring-2 ring-[#F84464] scale-[1.04]' : ''
-                        } ${
-                          isDropTarget
-                            ? 'ring-2 ring-[#F84464] scale-[1.05]'
-                            : ''
-                        }`}
-                      >
-                        {arranging && (
-                          <GripVertical className="w-3 h-3 opacity-50 absolute top-1 left-0.5" />
-                        )}
-                        <span className="font-mono font-bold text-[11px] sm:text-xs leading-none">
-                          {dense ? String(id).padStart(2, '0') : pcName(id)}
-                        </span>
-                        {!dense && (
-                          <span className="text-[9px] sm:text-[10px] font-medium opacity-85 truncate max-w-full">
-                            {STATUS_LABELS[state]}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                <span className="flex items-center gap-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-[#1EA83C]" />
+                  <span>{selectedLab.ownerName}</span>
+                </span>
+                {selectedLab.ownerPhone && (
+                  <a
+                    href={`tel:${selectedLab.ownerPhone}`}
+                    className="flex items-center gap-1.5 hover:text-[#F84464] font-medium"
+                  >
+                    <Phone className="w-3.5 h-3.5 text-sky-600" />
+                    <span>{selectedLab.ownerPhone}</span>
+                  </a>
+                )}
               </div>
-            ))}
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {user ? (
+              <button
+                type="button"
+                onClick={() => setProfileModal({ open: true, mode: 'create' })}
+                className="px-3.5 py-2 rounded-lg bg-[#333545] hover:bg-[#1F2533] text-xs font-semibold text-white flex items-center gap-1.5 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add Your Lab
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                className="px-3.5 py-2 rounded-lg border border-[#F84464] text-[#F84464] hover:bg-[#FFF0F3] text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Sign in to Add Lab
+              </button>
+            )}
+
+            {canEdit && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setProfileModal({ open: true, mode: 'edit' })}
+                  className="px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1.5"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  Edit Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteLab}
+                  className="px-3 py-2 rounded-lg border border-rose-200 bg-[#FFF0F3] hover:bg-rose-100 text-xs font-semibold text-[#D91B42] flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete
+                </button>
+              </>
+            )}
           </div>
         </section>
 
-        {/* Unplaced PCs Tray */}
-        {(arranging || unplacedIds.length > 0) && (
-          <section
-            onDragOver={(e) => {
-              if (arranging && draggedId !== null) e.preventDefault();
-            }}
-            onDrop={(e) => {
-              if (!arranging) return;
-              e.preventDefault();
-              if (draggedId !== null) placePC(draggedId, -1);
-              setDraggedId(null);
-            }}
-            className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm space-y-3"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-[#1F2533]">Unplaced PCs Tray</h2>
-                <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-[#F5F5FA] text-slate-600 border border-slate-200">
-                  {unplacedIds.length}
+        {!selectedLab ? (
+          <section className="rounded-xl border border-slate-200 bg-white p-10 text-center shadow-sm space-y-3">
+            <div className="mx-auto w-12 h-12 rounded-full bg-[#FFF0F3] text-[#F84464] flex items-center justify-center">
+              <Building2 className="w-6 h-6" />
+            </div>
+            <h2 className="text-lg font-bold text-[#1F2533]">No Labs Added Yet</h2>
+            <p className="text-sm text-slate-500 max-w-md mx-auto">
+              LNMIIT `@lnmiit.ac.in` account se Sign In karke apni pehli lab create karein. Uske baad koi bhi user aapki lab ka live status dekh sakta hai.
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                user ? setProfileModal({ open: true, mode: 'create' }) : handleGoogleLogin()
+              }
+              className="px-5 py-2.5 rounded-lg bg-[#F84464] hover:bg-[#E03554] text-sm font-semibold text-white shadow-sm inline-flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              {user ? 'Create First Lab' : 'Sign in with @lnmiit.ac.in'}
+            </button>
+          </section>
+        ) : (
+          <>
+            <StatsBar
+              counts={counts}
+              totalPcs={totalPcs}
+              filter={filter}
+              onFilterChange={setFilter}
+            />
+
+            <LayoutToolbar
+              canEdit={canEdit}
+              arranging={arranging}
+              onToggleArranging={() => {
+                if (!canEdit) return;
+                setArranging((v) => !v);
+                setPicked(null);
+              }}
+              filter={filter}
+              onFilterChange={setFilter}
+              search={search}
+              onSearchChange={setSearch}
+              layout={layout}
+              onResize={handleResize}
+              onResetLayout={handleResetLayout}
+              onBlankLayout={handleBlankLayout}
+            />
+
+            {/* BookMyShow-style Seat Map Card */}
+            <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-center gap-5 pb-4 mb-5 border-b border-slate-100 text-xs font-medium text-slate-600">
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 rounded border-2 border-[#1EA83C] bg-white inline-block" />
+                  Healthy
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 rounded border-2 border-[#F84464] bg-[#FFF0F3] inline-block" />
+                  Open Issue
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 rounded border-2 border-amber-500 bg-amber-50 inline-block" />
+                  In Progress
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 rounded border-2 border-sky-500 bg-sky-50 inline-block" />
+                  Resolved
                 </span>
               </div>
-              {arranging && picked !== null && placedSet.has(picked) && (
-                <button
-                  type="button"
-                  onClick={() => placePC(picked, -1)}
-                  className="px-3 py-1.5 rounded-lg bg-[#333545] hover:bg-[#1F2533] text-xs font-medium text-white flex items-center gap-1.5"
-                >
-                  <Undo2 className="w-3.5 h-3.5" />
-                  Return {pcName(picked)} to tray
-                </button>
-              )}
-            </div>
 
-            {unplacedIds.length === 0 ? (
-              <p className="text-xs text-slate-500">
-                All 90 PCs are currently placed on the lab map. Drag any PC here to unplace it.
-              </p>
-            ) : (
-              <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
-                {unplacedIds.map((id) => {
-                  const state = records[id]?.status || 'ok';
-                  const style = STATUS_STYLES[state];
-                  const isPicked = arranging && picked === id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      draggable={arranging}
-                      onDragStart={(e) => {
-                        setDraggedId(id);
-                        e.dataTransfer.setData('text/plain', pcName(id));
-                        e.dataTransfer.effectAllowed = 'move';
-                      }}
-                      onDragEnd={() => setDraggedId(null)}
-                      onClick={() =>
-                        arranging
-                          ? setPicked((prev) => (prev === id ? null : id))
-                          : setEditingPcId(id)
-                      }
-                      className={`px-3 py-2 rounded-lg border-2 text-xs font-mono font-bold flex items-center gap-1.5 transition-all ${
-                        style.card
-                      } ${isPicked ? 'ring-2 ring-[#F84464]' : ''}`}
-                    >
-                      <Monitor className="w-3.5 h-3.5" />
-                      {pcName(id)}
-                    </button>
-                  );
-                })}
+              <div className="mb-6 flex flex-col items-center">
+                <div className="w-full max-w-md h-3 border-t-4 border-sky-300/80 rounded-t-[100%] shadow-[0_-6px_14px_-4px_rgba(56,189,248,0.35)]" />
+                <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  All eyes this way · Front of {selectedLab.name}
+                </span>
               </div>
+
+              <div className="space-y-2 overflow-x-auto pb-2">
+                {rowsArray.map((rowSeats, rIdx) => (
+                  <div key={rIdx} className="flex items-center gap-2 sm:gap-3">
+                    <span className="w-6 shrink-0 text-center font-mono text-xs font-bold text-slate-400">
+                      {rowLabel(rIdx)}
+                    </span>
+                    <div
+                      className="flex-1 grid gap-1.5 sm:gap-2"
+                      style={{
+                        gridTemplateColumns: `repeat(${layout.cols}, minmax(0, 1fr))`,
+                      }}
+                    >
+                      {rowSeats.map((id, cIdx) => {
+                        const index = rIdx * layout.cols + cIdx;
+                        const isDropTarget = canEdit && arranging && dragOverIndex === index;
+
+                        if (!id) {
+                          return canEdit && arranging ? (
+                            <button
+                              key={`empty-${index}`}
+                              type="button"
+                              onClick={() => handleSeatClick(index)}
+                              onDragOver={(e) => {
+                                if (draggedId !== null) e.preventDefault();
+                                setDragOverIndex(index);
+                              }}
+                              onDragLeave={() => setDragOverIndex(null)}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                setDragOverIndex(null);
+                                if (draggedId !== null) placePC(draggedId, index);
+                                setDraggedId(null);
+                              }}
+                              className={`min-h-[48px] sm:min-h-[54px] rounded-lg border border-dashed text-xs font-mono transition-all flex items-center justify-center ${
+                                isDropTarget
+                                  ? 'border-[#F84464] bg-[#FFF0F3] text-[#F84464] scale-[1.03]'
+                                  : 'border-slate-300 bg-slate-50 text-slate-400 hover:border-[#F84464] hover:text-[#F84464]'
+                              }`}
+                              title="Empty seat (click or drop PC here)"
+                            >
+                              +
+                            </button>
+                          ) : (
+                            <div key={`spacer-${index}`} className="min-h-[48px] sm:min-h-[54px]" />
+                          );
+                        }
+
+                        const entry = records[id];
+                        const state = entry?.status || 'ok';
+                        const style = STATUS_STYLES[state];
+                        const dimmed =
+                          !arranging &&
+                          ((filter && state !== filter) || !matchesSearch(id));
+                        const isPicked = canEdit && arranging && picked === id;
+
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            disabled={dimmed}
+                            draggable={canEdit && arranging}
+                            onDragStart={(e) => {
+                              if (!canEdit) return;
+                              setDraggedId(id);
+                              e.dataTransfer.setData('text/plain', pcName(id));
+                              e.dataTransfer.effectAllowed = 'move';
+                            }}
+                            onDragEnd={() => {
+                              setDraggedId(null);
+                              setDragOverIndex(null);
+                            }}
+                            onDragOver={(e) => {
+                              if (!canEdit || !arranging || draggedId === null) return;
+                              e.preventDefault();
+                              setDragOverIndex(index);
+                            }}
+                            onDragLeave={() => setDragOverIndex(null)}
+                            onDrop={(e) => {
+                              if (!canEdit || !arranging) return;
+                              e.preventDefault();
+                              setDragOverIndex(null);
+                              if (draggedId !== null) placePC(draggedId, index);
+                              setDraggedId(null);
+                            }}
+                            onClick={() => handleSeatClick(index)}
+                            title={
+                              entry?.issues?.length
+                                ? `${pcName(id)}: ${entry.issues.join(', ')}`
+                                : `${pcName(id)} · ${STATUS_LABELS[state]}`
+                            }
+                            className={`relative min-h-[48px] sm:min-h-[54px] rounded-lg border-2 px-1 py-1 flex flex-col items-center justify-center gap-0.5 transition-all duration-150 ${
+                              style.card
+                            } ${style.glow} ${
+                              dimmed ? 'opacity-20 grayscale pointer-events-none' : ''
+                            } ${canEdit && arranging ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                              isPicked ? 'ring-2 ring-[#F84464] scale-[1.04]' : ''
+                            } ${
+                              isDropTarget
+                                ? 'ring-2 ring-[#F84464] scale-[1.05]'
+                                : ''
+                            }`}
+                          >
+                            {canEdit && arranging && (
+                              <GripVertical className="w-3 h-3 opacity-50 absolute top-1 left-0.5" />
+                            )}
+                            <span className="font-mono font-bold text-[11px] sm:text-xs leading-none">
+                              {dense ? String(id).padStart(2, '0') : pcName(id)}
+                            </span>
+                            {!dense && (
+                              <span className="text-[9px] sm:text-[10px] font-medium opacity-85 truncate max-w-full">
+                                {STATUS_LABELS[state]}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* Unplaced PCs Tray */}
+            {((canEdit && arranging) || unplacedIds.length > 0) && (
+              <section
+                onDragOver={(e) => {
+                  if (canEdit && arranging && draggedId !== null) e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  if (!canEdit || !arranging) return;
+                  e.preventDefault();
+                  if (draggedId !== null) placePC(draggedId, -1);
+                  setDraggedId(null);
+                }}
+                className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm space-y-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold text-[#1F2533]">Unplaced PCs Tray</h2>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-[#F5F5FA] text-slate-600 border border-slate-200">
+                      {unplacedIds.length}
+                    </span>
+                  </div>
+                  {canEdit && arranging && picked !== null && placedSet.has(picked) && (
+                    <button
+                      type="button"
+                      onClick={() => placePC(picked, -1)}
+                      className="px-3 py-1.5 rounded-lg bg-[#333545] hover:bg-[#1F2533] text-xs font-medium text-white flex items-center gap-1.5"
+                    >
+                      <Undo2 className="w-3.5 h-3.5" />
+                      Return {pcName(picked)} to tray
+                    </button>
+                  )}
+                </div>
+
+                {unplacedIds.length === 0 ? (
+                  <p className="text-xs text-slate-500">
+                    All {totalPcs} PCs are placed on the lab map. Drag any PC here to unplace it.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
+                    {unplacedIds.map((id) => {
+                      const state = records[id]?.status || 'ok';
+                      const style = STATUS_STYLES[state];
+                      const isPicked = canEdit && arranging && picked === id;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          draggable={canEdit && arranging}
+                          onDragStart={(e) => {
+                            if (!canEdit) return;
+                            setDraggedId(id);
+                            e.dataTransfer.setData('text/plain', pcName(id));
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragEnd={() => setDraggedId(null)}
+                          onClick={() =>
+                            canEdit && arranging
+                              ? setPicked((prev) => (prev === id ? null : id))
+                              : setEditingPcId(id)
+                          }
+                          className={`px-3 py-2 rounded-lg border-2 text-xs font-mono font-bold flex items-center gap-1.5 transition-all ${
+                            style.card
+                          } ${isPicked ? 'ring-2 ring-[#F84464]' : ''}`}
+                        >
+                          <Monitor className="w-3.5 h-3.5" />
+                          {pcName(id)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
             )}
-          </section>
+          </>
         )}
       </main>
+
+      {/* Footer Attribution */}
+      <footer className="mt-8 border-t border-slate-200 bg-[#333545] text-slate-300">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
+          <p className="text-center sm:text-left">
+            Website designed &amp; developed by{' '}
+            <span className="font-semibold text-white">Mr. Shivam Maheshwari</span>,{' '}
+            <span>Technical Superintendent, CSE</span>
+          </p>
+          <a
+            href="tel:+919468955596"
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 hover:bg-[#F84464] text-white font-semibold transition-colors"
+          >
+            <Phone className="w-3.5 h-3.5" />
+            +91-9468955596
+          </a>
+        </div>
+      </footer>
 
       <EditorModal
         pcId={editingPcId}
         entry={editingPcId ? records[editingPcId] : null}
+        readOnly={!canEdit}
         onClose={() => setEditingPcId(null)}
         onSave={handleSavePc}
       />
 
+      <LabProfileModal
+        open={profileModal.open}
+        mode={profileModal.mode}
+        initialLab={selectedLab}
+        user={user}
+        onClose={() => setProfileModal({ open: false, mode: 'create' })}
+        onSubmit={handleSaveLabProfile}
+      />
+
       {toast && (
-        <div className="fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-[#333545] text-white text-sm font-medium shadow-xl">
+        <div className="fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-[#333545] text-white text-sm font-medium shadow-xl border border-white/10">
           {toast}
         </div>
       )}
