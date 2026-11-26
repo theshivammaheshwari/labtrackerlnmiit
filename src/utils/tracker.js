@@ -144,3 +144,36 @@ export function buildCsv(records, totalPcs = DEFAULT_TOTAL_PCS) {
   }
   return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
 }
+
+export function buildMaintenanceLogCsv(historyMap = {}, totalPcs = DEFAULT_TOTAL_PCS) {
+  const csvCell = (value) => {
+    const text = String(value ?? '');
+    return `"${/^\s*[=+@-]/.test(text) ? "'" : ''}${text.replaceAll('"', '""')}"`;
+  };
+
+  const allEntries = [];
+  for (let id = 1; id <= totalPcs; id++) {
+    const logs = Array.isArray(historyMap[id]) ? historyMap[id] : [];
+    for (const log of logs) {
+      allEntries.push({ pcId: id, ...log });
+    }
+  }
+
+  // Sort chronologically from start (oldest) to end (latest)
+  allEntries.sort((a, b) => Date.parse(a.timestamp || 0) - Date.parse(b.timestamp || 0));
+
+  if (allEntries.length === 0) return null;
+
+  const lines = [['Date & Time', 'PC', 'Status', 'Issues', 'Notes', 'Updated By']];
+  for (const item of allEntries) {
+    lines.push([
+      item.timestamp ? new Date(item.timestamp).toLocaleString() : '',
+      pcName(item.pcId),
+      STATUS_LABELS[item.status] || item.status || '',
+      Array.isArray(item.issues) ? item.issues.join(', ') : '',
+      item.notes || '',
+      item.by || '',
+    ]);
+  }
+  return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+}

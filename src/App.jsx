@@ -45,6 +45,7 @@ import {
   STATUS_LABELS,
   STATUS_STYLES,
   buildCsv,
+  buildMaintenanceLogCsv,
   decodeTrackerData,
   defaultLayout,
   downloadFile,
@@ -672,14 +673,37 @@ export default function App() {
                 </button>
 
                 {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white flex items-center gap-1.5 transition-colors"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    Restore
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const csv = buildMaintenanceLogCsv(historyMap, totalPcs);
+                        if (!csv) {
+                          showToast('No maintenance log entries recorded yet.');
+                          return;
+                        }
+                        downloadFile(
+                          `${selectedLab.name.replace(/\s+/g, '-').toLowerCase()}-maintenance-log.csv`,
+                          'text/csv;charset=utf-8',
+                          csv
+                        );
+                        showToast('Maintenance log downloaded for Excel.');
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-xs font-semibold text-emerald-200 flex items-center gap-1.5 transition-colors"
+                      title="Download full Maintenance Log (Start to End) in Excel CSV"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      Log (Excel)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-white flex items-center gap-1.5 transition-colors"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      Restore
+                    </button>
+                  </>
                 )}
                 <input
                   ref={fileInputRef}
