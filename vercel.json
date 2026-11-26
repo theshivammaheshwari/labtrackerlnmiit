@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/Lab-PC-Tracker.html"
+    }
+  ]
+}
