@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab PC Tracker</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:#172740;font:15px system-ui,sans-serif}main{width:100%;padding:clamp(8px,1.4vw,22px)}header,.toolbar,.actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}h1,h2{margin:0}p{line-height:1.45}.toolbar{margin:20px 0}.map{container-type:inline-size;background:white;padding:clamp(4px,1vw,14px);border:1px solid #d5dfeb;border-radius:14px}button,select,input,textarea{font:inherit}button,select{border:1px solid #acbdd1;border-radius:8px;padding:9px;background:white;color:inherit}button{cursor:pointer}button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #3174d9;outline-offset:2px}.pc{min-height:55px;font-weight:650}.pc small{display:block;font-weight:500}.open{background:#ffe7e5;border-color:#d88780;color:#801d1a}.progress{background:#fff0ce;border-color:#cb9f44;color:#654406}.resolved{background:#def5e8;border-color:#79b697;color:#174d30}.muted{opacity:.22}.primary{background:#174c98;color:white;border-color:#174c98}dialog{width:min(470px,94vw);border:1px solid #abbad0;border-radius:14px;padding:22px;color:inherit}dialog::backdrop{background:#13284190}label,fieldset{display:block;margin:12px 0}fieldset{border:1px solid #b8c5d6;border-radius:8px}fieldset label{margin:5px 0}textarea{width:100%;padding:8px;resize:vertical}#message{min-height:1.4em}#front{text-align:center;color:#52637b;font-weight:600}#detail,#summary{color:#435775}
+
+[hidden]{display:none!important}
+#tray{margin-top:14px;padding:12px;border:1px solid #b8c5d6;border-radius:10px;background:white}#tray h2{font-size:16px}#tray-pcs{display:flex;flex-wrap:wrap;max-height:155px;overflow:auto;gap:4px}#tray-pcs button{width:74px}#return-pc{margin:6px 0}
+#rows{--cell:calc(100cqw / var(--cols));display:grid;grid-template-columns:repeat(var(--cols),minmax(0,1fr));gap:clamp(0px,calc(var(--cell) * .06),6px);margin-top:8px}
+#rows .seat{height:clamp(24px,calc(58vh / var(--map-rows)),68px)}
+#rows .pc,#rows .vacant{min-height:0;min-width:0;padding:0;border-radius:4px}
+#rows .pc{font-size:clamp(4px,calc(var(--cell) * .30),13px);line-height:1;overflow:hidden}
+#rows .pc svg{width:clamp(4px,calc(var(--cell) * .62),30px);height:clamp(5px,calc(var(--cell) * .48),24px)}
+#rows .pc small{font-size:clamp(4px,calc(var(--cell) * .22),11px)}
+#rows.dense .pc small{display:none}
+#rows .vacant{font-size:clamp(4px,calc(var(--cell) * .35),14px);overflow:hidden}
+.pc,.seat{height:68px}.pc{display:grid;place-items:center;align-content:center;gap:2px;border:1px solid transparent;background:transparent}
+.pc:hover:enabled,.pc[aria-pressed="true"]{background:#e5effc;border-color:#5283c2}
+.pc svg{width:30px;height:24px}.pc small{font-size:11px}.pc.open{color:#a12420}.pc.progress{color:#845601}.pc.resolved{color:#17633b}
+.seat{min-width:0}.vacant{border:1px dashed #afc0d4;background:#f4f8fc;color:#536b84}.layout-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}.layout-controls label{margin:0}
+.layout-controls input{width:65px;padding:6px}.map.editing .pc{cursor:grab}
+</style>
+</head>
+<body><main>
+<header><div><h1>Lab PC Tracker</h1><p id="summary"></p></div><div class="actions"><button id="export">Backup JSON</button><button id="csv">Export CSV</button><button id="restore">Restore backup</button><input id="file" type="file" accept=".json" hidden></div></header>
+<div class="toolbar"><button type="button" id="layout-toggle">Edit lab layout</button><label>Show <select id="filter"><option value="">All PCs</option><option value="open">Open issues</option><option value="progress">In progress</option><option value="resolved">Resolved</option></select></label></div>
+<div id="layout-panel" hidden>
+<div class="layout-controls"><label>Rows <input id="row-count" type="number" min="1" max="30"></label><label>Columns <input id="col-count" type="number" min="1" max="60"></label><button id="resize">Apply size</button><button id="reset-layout">Reset arrangement</button></div>
+<button id="blank-layout">Start with blank canvas</button>
+<p id="layout-help">PC icon uthao aur canvas par drop karo, ya PC select karke destination par click karo. Gap ke liye jagah khaali chhodo.</p>
+</div>
+<section id="map" class="map" aria-label="90 PC layout"><div id="front">Front of lab</div><div id="rows"></div></section>
+<section id="tray" hidden aria-label="Unplaced PCs"><h2>Unplaced PCs <span id="tray-count"></span></h2><button id="return-pc" hidden>Return selected PC to tray</button><div id="tray-pcs"></div></section>
+<p id="message" role="status"></p><p id="detail">Records isi browser mein save hote hain. File ko ek fixed location se kholo aur backup rakh lo.</p>
+<dialog id="editor"><form id="form"><h2 id="pc-title"></h2><label>Status <select id="status"><option value="open">Open</option><option value="progress">In progress</option><option value="resolved">Resolved</option><option value="ok">No issue</option></select></label>
+<fieldset id="issues"><legend>Issue type</legend></fieldset>
+<label>Notes (plain text ya Markdown)<textarea id="notes" rows="4" maxlength="3000" placeholder="e.g. Mouse click nahi ho raha. IP assign karna hai."></textarea></label><p id="updated"></p><div class="actions"><button id="cancel" type="button">Cancel</button><button class="primary" type="submit">Save PC</button></div></form></dialog>
+</main>
+<script>
+'use strict';
+const key = 'lab-pc-tracker-v1';
+const categories = ['Mouse', 'Keyboard', 'IP missing', 'Network', 'Monitor', 'Power', 'Software', 'Other'];
+const labels = {ok:'Unmarked', open:'Open', progress:'In progress', resolved:'Resolved'};
+const $ = id => document.getElementById(id);
+let records = {};
+let selected;
+let arranging = false;
+let picked = null;
+let dragged = null;
+const defaultLayout = () => ({rows:9, cols:10, seats:Array.from({length:90}, (_, index) => index + 1)});
+let layout = defaultLayout();
+
+function validDimensions(rows, cols) {
+  return Number.isInteger(rows) && rows >= 1 && rows <= 30 &&
+    Number.isInteger(cols) && cols >= 1 && cols <= 60;
+}
+function decode(data) {
+  if (![2, 3].includes(data?.version)) return {records:validate(data), layout:defaultLayout(), legacy:true};
+  const {rows, cols, seats} = data.layout || {};
+  if (!validDimensions(rows, cols) ||
+      !Array.isArray(seats) || seats.length !== rows * cols ||
+      seats.some(n => n !== null && (!Number.isInteger(n) || n < 1 || n > 90)) ||
+      new Set(seats.filter(n => n !== null)).size !== seats.filter(n => n !== null).length) {
+    throw Error('Invalid layout');
+  }
+  return {records:validate(data.records), layout:{rows, cols, seats}};
+}
+const message = text => $('message').textContent = text;
+function validate(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw Error('Invalid backup');
+  for (const [id, entry] of Object.entries(data)) {
+    if (!/^[1-9]\d?$/.test(id) || Number(id) > 90 || !entry ||
+        !Object.hasOwn(labels, entry.status) || !Array.isArray(entry.issues) ||
+        !entry.issues.every(issue => categories.includes(issue)) ||
+        typeof entry.notes !== 'string' || entry.notes.length > 3000 ||
+        typeof entry.updated !== 'string' || Number.isNaN(Date.parse(entry.updated))) throw Error('Invalid backup');
+  }
+  return data;
+}
+try { ({records, layout} = decode(JSON.parse(localStorage.getItem(key) || '{}'))); }
+catch { message('Saved records could not be read. Restore a backup if available.'); }
+
+function save(next, nextLayout = layout) {
+  try { localStorage.setItem(key, JSON.stringify({version:3, records:next, layout:nextLayout})); }
+  catch { message('Browser could not save. Keep this tab open and check browser storage settings.'); return false; }
+  records = next;
+  layout = nextLayout;
+  render();
+  return true;
+}
+
+for (const issue of categories) {
+  const label = document.createElement('label');
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.value = issue;
+  label.append(input, ' ' + issue);
+  $('issues').append(label);
+}
+const checks = [...$('issues').querySelectorAll('input')];
+const pcName = id => 'PC ' + String(id).padStart(2, '0');
+const computerIcon = '<svg viewBox="0 0 32 26" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="2" width="28" height="18" rx="3"/><path d="M16 20v4m-7 0h14M3 16h26"/></svg>';
+function render() {
+  const counts = {ok:0,open:0,progress:0,resolved:0};
+  const placed = new Set(layout.seats.filter(id => id !== null));
+  const unplaced = defaultLayout().seats.filter(id => !placed.has(id));
+  $('tray').hidden = !arranging && unplaced.length === 0;
+  $('tray-count').textContent = unplaced.length;
+  $('return-pc').hidden = !arranging || !placed.has(picked);
+  const tray = $('tray-pcs');
+  tray.replaceChildren();
+  for (const id of unplaced) {
+    const button = document.createElement('button');
+    const state = records[id]?.status || 'ok';
+    counts[state]++;
+    button.className = 'pc ' + state;
+    button.disabled = !arranging && Boolean($('filter').value && state !== $('filter').value);
+    button.innerHTML = computerIcon;
+    button.append(pcName(id));
+    button.onclick = () => arranging ? choosePC(id) : edit(id);
+    if (arranging) {
+      button.setAttribute('aria-pressed', String(picked === id));
+      enableDrag(button, id);
+    }
+    tray.append(button);
+  }
+  const grid = $('rows');
+  grid.style.setProperty('--cols', layout.cols);
+  grid.style.setProperty('--map-rows', layout.rows);
+  grid.classList.toggle('dense', layout.cols > 16);
+  grid.replaceChildren();
+  $('row-count').value = layout.rows;
+  $('col-count').value = layout.cols;
+  $('map').classList.toggle('editing', arranging);
+  for (const [index, id] of layout.seats.entries()) {
+    const seat = document.createElement(id || arranging ? 'button' : 'div');
+    seat.className = 'seat';
+    if (id) {
+      const state = records[id]?.status || 'ok';
+      counts[state]++;
+      const filtered = !arranging && Boolean($('filter').value && state !== $('filter').value);
+      seat.className += ' pc ' + state + (filtered ? ' muted' : '');
+      seat.disabled = filtered;
+      seat.innerHTML = computerIcon;
+      const caption = document.createElement('span');
+      caption.textContent = layout.cols > 16 ? String(id).padStart(2, '0') : pcName(id);
+      seat.setAttribute('aria-label', pcName(id) + ' · ' + labels[state]);
+      const status = document.createElement('small');
+      status.textContent = labels[state];
+      seat.append(caption, status);
+      seat.title = records[id]?.issues.join(', ') || labels[state];
+      seat.onclick = () => arranging ? chooseSeat(index) : edit(id);
+      if (arranging) {
+        seat.setAttribute('aria-pressed', String(picked === id));
+        enableDrag(seat, id);
+      }
+    } else if (arranging) {
+      seat.className += ' vacant';
+      seat.textContent = '+';
+      seat.setAttribute('aria-label', 'Empty seat, row ' + (Math.floor(index / layout.cols) + 1) + ', column ' + (index % layout.cols + 1));
+      seat.onclick = () => chooseSeat(index);
+    }
+    if (arranging) {
+      seat.ondragover = event => { if (dragged !== null) event.preventDefault(); };
+      seat.ondrop = event => {
+        event.preventDefault();
+        if (dragged !== null) placePC(dragged, index);
+        dragged = null;
+      };
+    }
+    grid.append(seat);
+  }
+  $('summary').textContent = '90 PCs · ' + counts.open + ' open · ' + counts.progress + ' in progress · ' + counts.resolved + ' resolved';
+}
+
+function placePC(id, target) {
+  if (!id) return;
+  const seats = [...layout.seats];
+  const origin = seats.indexOf(id);
+  if (origin === target) return;
+  if (origin >= 0) seats[origin] = target >= 0 ? seats[target] : null;
+  if (target >= 0) seats[target] = id;
+  picked = null;
+  if (save(records, {...layout, seats})) message(pcName(id) + (target >= 0 ? ' placed.' : ' returned to tray.'));
+}
+function chooseSeat(index) {
+  if (picked !== null && picked !== layout.seats[index]) {
+    placePC(picked, index);
+    return;
+  }
+  choosePC(layout.seats[index]);
+}
+function choosePC(id) {
+  picked = picked === id ? null : id;
+  render();
+  if (picked !== null) message(pcName(picked) + ' selected. Choose a destination.');
+}
+function enableDrag(button, id) {
+  button.draggable = true;
+  button.ondragstart = event => {
+    dragged = id;
+    event.dataTransfer.setData('text/plain', pcName(id));
+    event.dataTransfer.effectAllowed = 'move';
+  };
+  button.ondragend = () => { dragged = null; };
+}
+$('tray').ondragover = event => { if (arranging && dragged !== null) event.preventDefault(); };
+$('tray').ondrop = event => {
+  event.preventDefault();
+  if (arranging) placePC(dragged, -1);
+  dragged = null;
+};
+$('return-pc').onclick = () => placePC(picked, -1);
+$('blank-layout').onclick = () => {
+  if (!confirm('Move all PCs to the tray? Issue records will be kept.')) return;
+  picked = null;
+  const rows = Math.max(layout.rows, 10);
+  const cols = Math.max(layout.cols, 30);
+  if (save(records, {rows, cols, seats:Array(rows * cols).fill(null)})) message('Canvas cleared. Pick PCs from the tray.');
+};
+
+$('layout-toggle').onclick = () => {
+  arranging = !arranging;
+  picked = null;
+  $('layout-panel').hidden = !arranging;
+  $('layout-toggle').textContent = arranging ? 'Done editing layout' : 'Edit lab layout';
+  $('filter').disabled = arranging;
+  render();
+};
+$('resize').onclick = () => {
+  const rows = Number($('row-count').value);
+  const cols = Number($('col-count').value);
+  if (!validDimensions(rows, cols)) {
+    message('Use 1–30 rows and 1–60 columns.');
+    return;
+  }
+  const seats = Array(rows * cols).fill(null);
+  const displaced = [];
+  layout.seats.forEach((id, index) => {
+    if (!id) return;
+    const row = Math.floor(index / layout.cols);
+    const col = index % layout.cols;
+    if (row < rows && col < cols) seats[row * cols + col] = id;
+    else displaced.push(id);
+  });
+  picked = null;
+  if (save(records, {rows, cols, seats})) message('Layout size saved.' + (displaced.length ? ' PCs outside the new size were moved to the tray.' : ''));
+};
+$('reset-layout').onclick = () => {
+  if (!confirm('Reset PC positions to 9 × 10? Issue records will be kept.')) return;
+  picked = null;
+  if (save(records, defaultLayout())) message('Default layout restored.');
+};
+
+function edit(id) {
+  selected = id;
+  const entry = records[id];
+  $('pc-title').textContent = pcName(id);
+  $('status').value = entry?.status === 'ok' ? 'open' : entry?.status || 'open';
+  $('notes').value = entry?.notes || '';
+  $('updated').textContent = entry ? 'Last updated ' + new Date(entry.updated).toLocaleString() : '';
+  checks.forEach(input => input.checked = entry?.issues.includes(input.value) || false);
+  $('editor').showModal();
+}
+$('cancel').onclick = () => $('editor').close();
+$('filter').onchange = render;
+$('form').onsubmit = event => {
+  event.preventDefault();
+  const next = {...records};
+  const status = $('status').value;
+  if (status === 'ok') delete next[selected];
+  else next[selected] = {status, issues:checks.filter(input => input.checked).map(input => input.value), notes:$('notes').value.trim(), updated:new Date().toISOString()};
+  if (save(next)) {
+    $('editor').close();
+    message(pcName(selected) + ' saved.');
+  } else {
+    $('updated').textContent = $('message').textContent;
+  }
+};
+function download(name, type, text) {
+  const url = URL.createObjectURL(new Blob([text], {type}));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+$('export').onclick = () => download('lab-pc-backup.json', 'application/json', JSON.stringify({version:3, records, layout}, null, 2));
+$('csv').onclick = () => {
+  const csvCell = value => {
+    const text = String(value);
+    return '"' + (/^\s*[=+@-]/.test(text) ? "'" : '') + text.replaceAll('"','""') + '"';
+  };
+  const lines = [['PC','Status','Issues','Notes','Updated']];
+  for (let id = 1; id <= 90; id++) {
+    const entry = records[id];
+    lines.push([pcName(id),labels[entry?.status || 'ok'],entry?.issues.join(', ') || '',entry?.notes || '',entry?.updated || '']);
+  }
+  download('lab-pc-report.csv','text/csv;charset=utf-8','\uFEFF' + lines.map(line => line.map(csvCell).join(',')).join('\r\n'));
+};
+$('restore').onclick = () => $('file').click();
+$('file').onchange = async () => {
+  const file = $('file').files[0];
+  $('file').value = '';
+  if (!file) return;
+  try {
+    if (file.size > 1500000) throw Error('Backup too large');
+    const next = decode(JSON.parse(await file.text()));
+    if (confirm('Restore this backup? It replaces saved PC records and any layout included in the backup.')) {
+      picked = null;
+      if (save(next.records, next.legacy ? layout : next.layout)) message('Backup restored.');
+    }
+  } catch { message('This file is not a valid Lab PC Tracker backup.'); }
+};
+render();
+</script>
+</body>
+</html>
