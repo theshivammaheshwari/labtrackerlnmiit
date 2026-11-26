@@ -182,9 +182,9 @@ export function buildMaintenanceLogCsv(historyMap = {}, totalPcs = DEFAULT_TOTAL
 
 export function buildAssetTemplateCsv(totalPcs = DEFAULT_TOTAL_PCS) {
   const lines = [
-    ['PC', 'IP Address', 'OS', 'Asset Code', 'Serial No'],
-    ['PC 01', '172.16.1.101', 'Dual Boot (Windows / Ubuntu)', 'LNMIIT-CSE-001', 'SN123456'],
-    ['PC 02', '172.16.1.102', 'Ubuntu', 'LNMIIT-CSE-002', 'SN123457'],
+    ['PC', 'IP_Address', 'OS', 'Asset_Code', 'CPU_Model', 'CPU_Serial_No', 'TFT_Model', 'TFT_Serial_No'],
+    ['PC 01', '172.16.1.101', 'Dual Boot (Windows / Ubuntu)', 'LNMIIT-CSE-001', 'HP ProDesk 400 G7', 'CPU-SN-12345', 'HP P22v G4', 'TFT-SN-67890'],
+    ['PC 02', '172.16.1.102', 'Ubuntu', 'LNMIIT-CSE-002', 'HP ProDesk 400 G7', 'CPU-SN-12346', 'HP P22v G4', 'TFT-SN-67891'],
   ];
   return '\uFEFF' + lines.map((l) => l.map((v) => `"${v}"`).join(',')).join('\r\n');
 }
@@ -217,9 +217,32 @@ export function parseAssetExcel(arrayBuffer, totalPcs = DEFAULT_TOTAL_PCS) {
     const ip = mapped.ipaddress || mapped.ip || '';
     const os = mapped.os || mapped.operatingsystem || '';
     const assetCode = mapped.assetcode || mapped.asset || mapped.assetid || '';
-    const serialNo = mapped.serialno || mapped.serialnumber || mapped.serial || mapped.sn || '';
+    const cpuModel = mapped.cpumodel || mapped.cpu || '';
+    const cpuSerialNo =
+      mapped.cpuserialno ||
+      mapped.cpuserial ||
+      mapped.serialno ||
+      mapped.serialnumber ||
+      mapped.serial ||
+      mapped.sn ||
+      '';
+    const tftModel = mapped.tftmodel || mapped.monitormodel || mapped.tft || '';
+    const tftSerialNo =
+      mapped.tftserialno ||
+      mapped.tftserial ||
+      mapped.monitorserialno ||
+      mapped.monitorserial ||
+      '';
 
-    nextAssets[pcId] = { ip, os, assetCode, serialNo };
+    nextAssets[pcId] = {
+      ip,
+      os,
+      assetCode,
+      cpuModel,
+      cpuSerialNo,
+      tftModel,
+      tftSerialNo,
+    };
     matchedCount++;
   }
 

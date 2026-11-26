@@ -359,6 +359,10 @@ export default function App() {
       (asset?.ip || '').toLowerCase().includes(q) ||
       (asset?.os || '').toLowerCase().includes(q) ||
       (asset?.assetCode || '').toLowerCase().includes(q) ||
+      (asset?.cpuModel || '').toLowerCase().includes(q) ||
+      (asset?.cpuSerialNo || '').toLowerCase().includes(q) ||
+      (asset?.tftModel || '').toLowerCase().includes(q) ||
+      (asset?.tftSerialNo || '').toLowerCase().includes(q) ||
       (asset?.serialNo || '').toLowerCase().includes(q)
     );
   };

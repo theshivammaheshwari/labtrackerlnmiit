@@ -26,7 +26,10 @@ export default function EditorModal({
   const [ip, setIp] = useState('');
   const [os, setOs] = useState('');
   const [assetCode, setAssetCode] = useState('');
-  const [serialNo, setSerialNo] = useState('');
+  const [cpuModel, setCpuModel] = useState('');
+  const [cpuSerialNo, setCpuSerialNo] = useState('');
+  const [tftModel, setTftModel] = useState('');
+  const [tftSerialNo, setTftSerialNo] = useState('');
 
   useEffect(() => {
     if (!pcId) return;
@@ -37,7 +40,10 @@ export default function EditorModal({
     setIp(asset?.ip || '');
     setOs(asset?.os || '');
     setAssetCode(asset?.assetCode || '');
-    setSerialNo(asset?.serialNo || '');
+    setCpuModel(asset?.cpuModel || '');
+    setCpuSerialNo(asset?.cpuSerialNo || asset?.serialNo || '');
+    setTftModel(asset?.tftModel || '');
+    setTftSerialNo(asset?.tftSerialNo || '');
   }, [pcId, entry, asset]);
 
   if (!pcId) return null;
@@ -62,7 +68,10 @@ export default function EditorModal({
       ip: ip.trim(),
       os: os.trim(),
       assetCode: assetCode.trim(),
-      serialNo: serialNo.trim(),
+      cpuModel: cpuModel.trim(),
+      cpuSerialNo: cpuSerialNo.trim(),
+      tftModel: tftModel.trim(),
+      tftSerialNo: tftSerialNo.trim(),
     });
   };
 
@@ -146,38 +155,28 @@ export default function EditorModal({
             readOnly ? (
               <div className="p-6 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-slate-200 bg-[#F5F5FA] p-3.5">
-                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                      IP Address
-                    </span>
-                    <span className="mt-1 block font-mono text-sm font-bold text-[#1F2533]">
-                      {asset?.ip || '—'}
-                    </span>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-[#F5F5FA] p-3.5">
-                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                      Operating System (OS)
-                    </span>
-                    <span className="mt-1 block text-sm font-bold text-[#1F2533]">
-                      {asset?.os || '—'}
-                    </span>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-[#F5F5FA] p-3.5">
-                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                      Asset Code
-                    </span>
-                    <span className="mt-1 block font-mono text-sm font-bold text-[#1F2533]">
-                      {asset?.assetCode || '—'}
-                    </span>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-[#F5F5FA] p-3.5">
-                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                      Serial No
-                    </span>
-                    <span className="mt-1 block font-mono text-sm font-bold text-[#1F2533]">
-                      {asset?.serialNo || '—'}
-                    </span>
-                  </div>
+                  {[
+                    { label: 'IP Address', value: asset?.ip, mono: true },
+                    { label: 'Operating System (OS)', value: asset?.os },
+                    { label: 'Asset Code', value: asset?.assetCode, mono: true },
+                    { label: 'CPU Model', value: asset?.cpuModel },
+                    { label: 'CPU Serial No', value: asset?.cpuSerialNo || asset?.serialNo, mono: true },
+                    { label: 'TFT Model', value: asset?.tftModel },
+                    { label: 'TFT Serial No', value: asset?.tftSerialNo, mono: true },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-xl border border-slate-200 bg-[#F5F5FA] p-3">
+                      <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                        {item.label}
+                      </span>
+                      <span
+                        className={`mt-1 block text-sm font-bold text-[#1F2533] break-all ${
+                          item.mono ? 'font-mono' : ''
+                        }`}
+                      >
+                        {item.value || '—'}
+                      </span>
+                    </div>
+                  ))}
                 </div>
                 <div className="flex justify-end pt-2 border-t border-slate-100">
                   <button
@@ -194,7 +193,7 @@ export default function EditorModal({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                      IP Address
+                      IP_Address
                     </label>
                     <input
                       type="text"
@@ -220,7 +219,7 @@ export default function EditorModal({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                      Asset Code
+                      Asset_Code
                     </label>
                     <input
                       type="text"
@@ -233,14 +232,53 @@ export default function EditorModal({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                      Serial No
+                      CPU_Model
                     </label>
                     <input
                       type="text"
                       maxLength={80}
-                      value={serialNo}
-                      onChange={(e) => setSerialNo(e.target.value)}
-                      placeholder="e.g. SN123456"
+                      value={cpuModel}
+                      onChange={(e) => setCpuModel(e.target.value)}
+                      placeholder="e.g. HP ProDesk 400 G7"
+                      className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3 py-2 text-sm text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                      CPU_Serial_No
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={80}
+                      value={cpuSerialNo}
+                      onChange={(e) => setCpuSerialNo(e.target.value)}
+                      placeholder="e.g. CPU-SN-12345"
+                      className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3 py-2 text-sm font-mono text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                      TFT_Model
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={80}
+                      value={tftModel}
+                      onChange={(e) => setTftModel(e.target.value)}
+                      placeholder="e.g. HP P22v G4"
+                      className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3 py-2 text-sm text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                      TFT_Serial_No
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={80}
+                      value={tftSerialNo}
+                      onChange={(e) => setTftSerialNo(e.target.value)}
+                      placeholder="e.g. TFT-SN-67890"
                       className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3 py-2 text-sm font-mono text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
                     />
                   </div>
