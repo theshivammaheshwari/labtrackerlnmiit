@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Monitor, Save, Check, Lock, History, FileText } from 'lucide-react';
+import { X, Monitor, Save, Check, Lock, History, FileText, Cpu } from 'lucide-react';
 import { CATEGORIES, STATUS_LABELS, STATUS_STYLES, pcName } from '../utils/tracker';
 
 const STATUS_OPTIONS = [
@@ -13,14 +13,20 @@ export default function EditorModal({
   pcId,
   entry,
   history = [],
+  asset = null,
   readOnly = false,
   onClose,
   onSave,
+  onSaveAsset,
 }) {
   const [tab, setTab] = useState('details');
   const [status, setStatus] = useState('open');
   const [issues, setIssues] = useState([]);
   const [notes, setNotes] = useState('');
+  const [ip, setIp] = useState('');
+  const [os, setOs] = useState('');
+  const [assetCode, setAssetCode] = useState('');
+  const [serialNo, setSerialNo] = useState('');
 
   useEffect(() => {
     if (!pcId) return;
@@ -28,7 +34,11 @@ export default function EditorModal({
     setStatus(entry?.status === 'ok' ? 'open' : entry?.status || 'open');
     setIssues(entry?.issues || []);
     setNotes(entry?.notes || '');
-  }, [pcId, entry]);
+    setIp(asset?.ip || '');
+    setOs(asset?.os || '');
+    setAssetCode(asset?.assetCode || '');
+    setSerialNo(asset?.serialNo || '');
+  }, [pcId, entry, asset]);
 
   if (!pcId) return null;
 
@@ -43,6 +53,17 @@ export default function EditorModal({
     e.preventDefault();
     if (readOnly) return;
     onSave(pcId, { status, issues, notes: notes.trim() });
+  };
+
+  const handleAssetSubmit = (e) => {
+    e.preventDefault();
+    if (readOnly || !onSaveAsset) return;
+    onSaveAsset(pcId, {
+      ip: ip.trim(),
+      os: os.trim(),
+      assetCode: assetCode.trim(),
+      serialNo: serialNo.trim(),
+    });
   };
 
   const currentStatus = entry?.status || 'ok';
@@ -80,12 +101,12 @@ export default function EditorModal({
           </button>
         </div>
 
-        {/* Details / History Tabs */}
-        <div className="flex border-b border-slate-200 bg-[#F5F5FA] px-6 pt-2 gap-2 shrink-0">
+        {/* Details / Maintenance Log / PC Configuration Tabs */}
+        <div className="flex border-b border-slate-200 bg-[#F5F5FA] px-4 sm:px-6 pt-2 gap-1.5 overflow-x-auto shrink-0">
           <button
             type="button"
             onClick={() => setTab('details')}
-            className={`px-3.5 py-2 text-xs font-semibold rounded-t-lg border-b-2 flex items-center gap-1.5 transition-colors ${
+            className={`px-3 py-2 text-xs font-semibold rounded-t-lg border-b-2 flex items-center gap-1.5 whitespace-nowrap transition-colors ${
               tab === 'details'
                 ? 'border-[#F84464] text-[#F84464] bg-white'
                 : 'border-transparent text-slate-500 hover:text-[#1F2533]'
@@ -97,7 +118,7 @@ export default function EditorModal({
           <button
             type="button"
             onClick={() => setTab('history')}
-            className={`px-3.5 py-2 text-xs font-semibold rounded-t-lg border-b-2 flex items-center gap-1.5 transition-colors ${
+            className={`px-3 py-2 text-xs font-semibold rounded-t-lg border-b-2 flex items-center gap-1.5 whitespace-nowrap transition-colors ${
               tab === 'history'
                 ? 'border-[#F84464] text-[#F84464] bg-white'
                 : 'border-transparent text-slate-500 hover:text-[#1F2533]'
@@ -106,10 +127,143 @@ export default function EditorModal({
             <History className="w-3.5 h-3.5" />
             Maintenance Log ({history.length})
           </button>
+          <button
+            type="button"
+            onClick={() => setTab('config')}
+            className={`px-3 py-2 text-xs font-semibold rounded-t-lg border-b-2 flex items-center gap-1.5 whitespace-nowrap transition-colors ${
+              tab === 'config'
+                ? 'border-[#F84464] text-[#F84464] bg-white'
+                : 'border-transparent text-slate-500 hover:text-[#1F2533]'
+            }`}
+          >
+            <Cpu className="w-3.5 h-3.5" />
+            PC Configuration
+          </button>
         </div>
 
         <div className="overflow-y-auto flex-1">
-          {tab === 'history' ? (
+          {tab === 'config' ? (
+            readOnly ? (
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-slate-200 bg-[#F5F5FA] p-3.5">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      IP Address
+                    </span>
+                    <span className="mt-1 block font-mono text-sm font-bold text-[#1F2533]">
+                      {asset?.ip || '—'}
+                    </span>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-[#F5F5FA] p-3.5">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      Operating System (OS)
+                    </span>
+                    <span className="mt-1 block text-sm font-bold text-[#1F2533]">
+                      {asset?.os || '—'}
+                    </span>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-[#F5F5FA] p-3.5">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      Asset Code
+                    </span>
+                    <span className="mt-1 block font-mono text-sm font-bold text-[#1F2533]">
+                      {asset?.assetCode || '—'}
+                    </span>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-[#F5F5FA] p-3.5">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      Serial No
+                    </span>
+                    <span className="mt-1 block font-mono text-sm font-bold text-[#1F2533]">
+                      {asset?.serialNo || '—'}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex justify-end pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-4 py-2 rounded-lg bg-[#333545] text-white text-sm font-semibold hover:bg-[#1F2533]"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleAssetSubmit} className="p-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                      IP Address
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={45}
+                      value={ip}
+                      onChange={(e) => setIp(e.target.value)}
+                      placeholder="e.g. 172.16.1.101"
+                      className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3 py-2 text-sm font-mono text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                      OS
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={60}
+                      value={os}
+                      onChange={(e) => setOs(e.target.value)}
+                      placeholder="Windows / Ubuntu / Dual Boot"
+                      className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3 py-2 text-sm text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                      Asset Code
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={60}
+                      value={assetCode}
+                      onChange={(e) => setAssetCode(e.target.value)}
+                      placeholder="e.g. LNMIIT-CSE-001"
+                      className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3 py-2 text-sm font-mono text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                      Serial No
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={80}
+                      value={serialNo}
+                      onChange={(e) => setSerialNo(e.target.value)}
+                      placeholder="e.g. SN123456"
+                      className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3 py-2 text-sm font-mono text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-4 py-2 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-lg bg-[#F84464] hover:bg-[#E03554] text-sm font-semibold text-white shadow-sm flex items-center gap-2"
+                  >
+                    <Save className="w-4 h-4" />
+                    Save Config
+                  </button>
+                </div>
+              </form>
+            )
+          ) : tab === 'history' ? (
             <div className="p-6 space-y-3">
               {history.length === 0 ? (
                 <div className="text-center py-8 text-sm text-slate-500">

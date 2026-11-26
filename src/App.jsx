@@ -46,6 +46,8 @@ import {
   STATUS_STYLES,
   buildCsv,
   buildMaintenanceLogCsv,
+  buildAssetTemplateCsv,
+  parseAssetExcel,
   decodeTrackerData,
   defaultLayout,
   downloadFile,
@@ -101,6 +103,7 @@ export default function App() {
   const [privateNotes, setPrivateNotes] = useState([]);
   const [notesModalOpen, setNotesModalOpen] = useState(false);
   const fileInputRef = useRef(null);
+  const assetInputRef = useRef(null);
 
   const showToast = (msg) => setToast(msg);
 
@@ -172,6 +175,7 @@ export default function App() {
   const totalPcs = selectedLab?.totalPcs || DEFAULT_TOTAL_PCS;
   const canEdit = Boolean(user && selectedLab && user.uid === selectedLab.ownerUid);
   const historyMap = selectedLab?.history || {};
+  const assetsMap = selectedLab?.assets || {};
 
   // Private In-Charge Notes (ONLY fetched when user is the lab owner)
   useEffect(() => {
@@ -233,7 +237,12 @@ export default function App() {
     showToast('Signed out.');
   };
 
-  const persistLabData = async (nextRecords, nextLayout = layout, nextHistory = historyMap) => {
+  const persistLabData = async (
+    nextRecords,
+    nextLayout = layout,
+    nextHistory = historyMap,
+    nextAssets = assetsMap
+  ) => {
     if (!selectedLab || !canEdit) return;
     setCloudState({ status: 'saving', text: 'Saving to Firebase...' });
     try {
@@ -242,6 +251,7 @@ export default function App() {
         records: nextRecords,
         layout: nextLayout,
         history: nextHistory,
+        assets: nextAssets,
         updatedAt: new Date().toISOString(),
       });
       setCloudState({ status: 'synced', text: 'Cloud Synced · Live' });
@@ -340,11 +350,16 @@ export default function App() {
     const q = search.trim().toLowerCase();
     if (!q) return true;
     const entry = records[id];
+    const asset = assetsMap[id];
     return (
       pcName(id).toLowerCase().includes(q) ||
       String(id).includes(q) ||
       (entry?.issues || []).some((iss) => iss.toLowerCase().includes(q)) ||
-      (entry?.notes || '').toLowerCase().includes(q)
+      (entry?.notes || '').toLowerCase().includes(q) ||
+      (asset?.ip || '').toLowerCase().includes(q) ||
+      (asset?.os || '').toLowerCase().includes(q) ||
+      (asset?.assetCode || '').toLowerCase().includes(q) ||
+      (asset?.serialNo || '').toLowerCase().includes(q)
     );
   };
 
@@ -567,6 +582,29 @@ export default function App() {
     persistLabData(next, layout, nextHistory);
     setEditingPcId(null);
     showToast(`${pcName(pcId)} updated.`);
+  };
+
+  const handleSaveAsset = (pcId, assetObj) => {
+    if (!canEdit) return;
+    const nextAssets = { ...assetsMap, [pcId]: assetObj };
+    persistLabData(records, layout, historyMap, nextAssets);
+    showToast(`${pcName(pcId)} configuration saved.`);
+  };
+
+  const handleAssetExcelUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !canEdit) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const { assets: parsed, count } = parseAssetExcel(buf, totalPcs);
+      const nextAssets = { ...assetsMap, ...parsed };
+      await persistLabData(records, layout, historyMap, nextAssets);
+      showToast(`Imported PC Configuration for ${count} PC(s)!`);
+    } catch (err) {
+      console.error('Asset Excel upload error:', err);
+      showToast(err?.message || 'Could not parse Excel file.');
+    }
   };
 
   const handleRestore = async (e) => {
@@ -836,6 +874,38 @@ export default function App() {
 
             {canEdit && (
               <>
+                <button
+                  type="button"
+                  onClick={() => assetInputRef.current?.click()}
+                  className="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-xs font-semibold text-white flex items-center gap-1.5 shadow-sm"
+                  title="Upload Excel (.xlsx/.xls/.csv) with PC, IP Address, OS, Asset Code, Serial No"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload Assets (Excel)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    downloadFile(
+                      'pc-assets-template.csv',
+                      'text/csv;charset=utf-8',
+                      buildAssetTemplateCsv(totalPcs)
+                    );
+                    showToast('Sample Asset Excel/CSV template downloaded.');
+                  }}
+                  className="px-2.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-medium text-slate-600 flex items-center gap-1"
+                  title="Download sample Excel/CSV template"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Template
+                </button>
+                <input
+                  ref={assetInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  className="hidden"
+                  onChange={handleAssetExcelUpload}
+                />
                 <button
                   type="button"
                   onClick={() => setNotesModalOpen(true)}
@@ -1279,9 +1349,11 @@ export default function App() {
         pcId={editingPcId}
         entry={editingPcId ? records[editingPcId] : null}
         history={editingPcId ? historyMap[editingPcId] || [] : []}
+        asset={editingPcId ? assetsMap[editingPcId] || null : null}
         readOnly={!canEdit}
         onClose={() => setEditingPcId(null)}
         onSave={handleSavePc}
+        onSaveAsset={handleSaveAsset}
       />
 
       <LabProfileModal

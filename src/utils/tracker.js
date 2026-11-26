@@ -1,3 +1,5 @@
+import * as XLSX from 'xlsx';
+
 export const STORAGE_KEY = 'lab-pc-tracker-v1';
 export const DEFAULT_TOTAL_PCS = 90;
 
@@ -145,6 +147,55 @@ export function buildCsv(records, totalPcs = DEFAULT_TOTAL_PCS) {
   return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
 }
 
+export function buildAssetTemplateCsv(totalPcs = DEFAULT_TOTAL_PCS) {
+  const lines = [
+    ['PC', 'IP Address', 'OS', 'Asset Code', 'Serial No'],
+    ['PC 01', '172.16.1.101', 'Dual Boot (Windows / Ubuntu)', 'LNMIIT-CSE-001', 'SN123456'],
+    ['PC 02', '172.16.1.102', 'Ubuntu', 'LNMIIT-CSE-002', 'SN123457'],
+  ];
+  return '\uFEFF' + lines.map((l) => l.map((v) => `"${v}"`).join(',')).join('\r\n');
+}
+
+export function parseAssetExcel(arrayBuffer, totalPcs = DEFAULT_TOTAL_PCS) {
+  const wb = XLSX.read(arrayBuffer, { type: 'array' });
+  const firstSheet = wb.Sheets[wb.SheetNames[0]];
+  if (!firstSheet) throw new Error('Empty workbook');
+  const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error('No rows found in Excel');
+  }
+
+  const normalizeKey = (k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const nextAssets = {};
+  let matchedCount = 0;
+
+  for (const row of rows) {
+    const mapped = {};
+    for (const [k, v] of Object.entries(row)) {
+      mapped[normalizeKey(k)] = String(v ?? '').trim();
+    }
+
+    const rawPc = mapped.pc || mapped.pcno || mapped.pcnumber || mapped.computer || mapped.id || '';
+    const pcMatch = rawPc.match(/\d+/);
+    if (!pcMatch) continue;
+    const pcId = Number(pcMatch[0]);
+    if (!Number.isInteger(pcId) || pcId < 1 || pcId > totalPcs) continue;
+
+    const ip = mapped.ipaddress || mapped.ip || '';
+    const os = mapped.os || mapped.operatingsystem || '';
+    const assetCode = mapped.assetcode || mapped.asset || mapped.assetid || '';
+    const serialNo = mapped.serialno || mapped.serialnumber || mapped.serial || mapped.sn || '';
+
+    nextAssets[pcId] = { ip, os, assetCode, serialNo };
+    matchedCount++;
+  }
+
+  if (matchedCount === 0) {
+    throw new Error('No valid PC rows found (need a PC column like PC 01 or 1)');
+  }
+  return { assets: nextAssets, count: matchedCount };
+}
+
 export function buildMaintenanceLogCsv(historyMap = {}, totalPcs = DEFAULT_TOTAL_PCS) {
   const csvCell = (value) => {
     const text = String(value ?? '');
@@ -176,4 +227,53 @@ export function buildMaintenanceLogCsv(historyMap = {}, totalPcs = DEFAULT_TOTAL
     ]);
   }
   return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+}
+
+export function buildAssetTemplateCsv(totalPcs = DEFAULT_TOTAL_PCS) {
+  const lines = [
+    ['PC', 'IP Address', 'OS', 'Asset Code', 'Serial No'],
+    ['PC 01', '172.16.1.101', 'Dual Boot (Windows / Ubuntu)', 'LNMIIT-CSE-001', 'SN123456'],
+    ['PC 02', '172.16.1.102', 'Ubuntu', 'LNMIIT-CSE-002', 'SN123457'],
+  ];
+  return '\uFEFF' + lines.map((l) => l.map((v) => `"${v}"`).join(',')).join('\r\n');
+}
+
+export function parseAssetExcel(arrayBuffer, totalPcs = DEFAULT_TOTAL_PCS) {
+  const wb = XLSX.read(arrayBuffer, { type: 'array' });
+  const firstSheet = wb.Sheets[wb.SheetNames[0]];
+  if (!firstSheet) throw new Error('Empty workbook');
+  const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error('No rows found in Excel');
+  }
+
+  const normalizeKey = (k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const nextAssets = {};
+  let matchedCount = 0;
+
+  for (const row of rows) {
+    const mapped = {};
+    for (const [k, v] of Object.entries(row)) {
+      mapped[normalizeKey(k)] = String(v ?? '').trim();
+    }
+
+    const rawPc = mapped.pc || mapped.pcno || mapped.pcnumber || mapped.computer || mapped.id || '';
+    const pcMatch = rawPc.match(/\d+/);
+    if (!pcMatch) continue;
+    const pcId = Number(pcMatch[0]);
+    if (!Number.isInteger(pcId) || pcId < 1 || pcId > totalPcs) continue;
+
+    const ip = mapped.ipaddress || mapped.ip || '';
+    const os = mapped.os || mapped.operatingsystem || '';
+    const assetCode = mapped.assetcode || mapped.asset || mapped.assetid || '';
+    const serialNo = mapped.serialno || mapped.serialnumber || mapped.serial || mapped.sn || '';
+
+    nextAssets[pcId] = { ip, os, assetCode, serialNo };
+    matchedCount++;
+  }
+
+  if (matchedCount === 0) {
+    throw new Error('No valid PC rows found (need a PC column like PC 01 or 1)');
+  }
+  return { assets: nextAssets, count: matchedCount };
 }
