@@ -10,6 +10,7 @@ export default function LabProfileModal({
   onSubmit,
 }) {
   const [name, setName] = useState('');
+  const [department, setDepartment] = useState('');
   const [location, setLocation] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [ownerPhone, setOwnerPhone] = useState('');
@@ -19,12 +20,14 @@ export default function LabProfileModal({
     if (!open) return;
     if (mode === 'edit' && initialLab) {
       setName(initialLab.name || '');
+      setDepartment(initialLab.department || '');
       setLocation(initialLab.location || '');
       setOwnerName(initialLab.ownerName || '');
       setOwnerPhone(initialLab.ownerPhone || '');
       setTotalPcs(initialLab.totalPcs || 90);
     } else {
       setName('');
+      setDepartment('CSE');
       setLocation('');
       setOwnerName(user?.displayName || '');
       setOwnerPhone('');
@@ -36,12 +39,13 @@ export default function LabProfileModal({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!name.trim() || !location.trim() || !ownerName.trim() || !ownerPhone.trim()) {
+    if (!name.trim() || !department.trim() || !location.trim() || !ownerName.trim() || !ownerPhone.trim()) {
       return;
     }
     const clampedPcs = Math.max(1, Math.min(180, Number(totalPcs) || 90));
     onSubmit({
       name: name.trim(),
+      department: department.trim(),
       location: location.trim(),
       ownerName: ownerName.trim(),
       ownerPhone: ownerPhone.trim(),
@@ -83,19 +87,36 @@ export default function LabProfileModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-              Lab Name *
-            </label>
-            <input
-              type="text"
-              required
-              maxLength={80}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. CSE Lab 1 / CP Lab"
-              className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3.5 py-2 text-sm text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                Lab Name *
+              </label>
+              <input
+                type="text"
+                required
+                maxLength={80}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. CSE Lab 1 / CP Lab"
+                className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3.5 py-2 text-sm text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                Department Name *
+              </label>
+              <input
+                type="text"
+                required
+                maxLength={60}
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+                placeholder="e.g. CSE / ECE / CCE"
+                className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3.5 py-2 text-sm text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
+              />
+            </div>
           </div>
 
           <div>

@@ -166,7 +166,7 @@ export function buildMaintenanceLogCsv(historyMap = {}, totalPcs = DEFAULT_TOTAL
 
   if (allEntries.length === 0) return null;
 
-  const lines = [['Date & Time', 'PC', 'Status', 'Issues', 'Notes', 'Updated By']];
+  const lines = [['Date & Time', 'PC', 'Status', 'Issues', 'Notes', 'Person Name', 'Department']];
   for (const item of allEntries) {
     lines.push([
       item.timestamp ? new Date(item.timestamp).toLocaleString() : '',
@@ -174,7 +174,8 @@ export function buildMaintenanceLogCsv(historyMap = {}, totalPcs = DEFAULT_TOTAL
       STATUS_LABELS[item.status] || item.status || '',
       Array.isArray(item.issues) ? item.issues.join(', ') : '',
       item.notes || '',
-      item.by || '',
+      item.personName || item.by || '',
+      item.department || '',
     ]);
   }
   return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');

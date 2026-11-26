@@ -14,6 +14,8 @@ export default function EditorModal({
   entry,
   history = [],
   asset = null,
+  defaultPersonName = '',
+  defaultDepartment = '',
   readOnly = false,
   onClose,
   onSave,
@@ -23,6 +25,8 @@ export default function EditorModal({
   const [status, setStatus] = useState('open');
   const [issues, setIssues] = useState([]);
   const [notes, setNotes] = useState('');
+  const [personName, setPersonName] = useState('');
+  const [department, setDepartment] = useState('');
   const [ip, setIp] = useState('');
   const [os, setOs] = useState('');
   const [assetCode, setAssetCode] = useState('');
@@ -37,6 +41,8 @@ export default function EditorModal({
     setStatus(entry?.status === 'ok' ? 'open' : entry?.status || 'open');
     setIssues(entry?.issues || []);
     setNotes(entry?.notes || '');
+    setPersonName(defaultPersonName || '');
+    setDepartment(defaultDepartment || '');
     setIp(asset?.ip || '');
     setOs(asset?.os || '');
     setAssetCode(asset?.assetCode || '');
@@ -44,7 +50,7 @@ export default function EditorModal({
     setCpuSerialNo(asset?.cpuSerialNo || asset?.serialNo || '');
     setTftModel(asset?.tftModel || '');
     setTftSerialNo(asset?.tftSerialNo || '');
-  }, [pcId, entry, asset]);
+  }, [pcId, entry, asset, defaultPersonName, defaultDepartment]);
 
   if (!pcId) return null;
 
@@ -58,7 +64,13 @@ export default function EditorModal({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (readOnly) return;
-    onSave(pcId, { status, issues, notes: notes.trim() });
+    onSave(pcId, {
+      status,
+      issues,
+      notes: notes.trim(),
+      personName: personName.trim() || defaultPersonName,
+      department: department.trim() || defaultDepartment,
+    });
   };
 
   const handleAssetSubmit = (e) => {
@@ -346,9 +358,10 @@ export default function EditorModal({
                           </p>
                         )}
 
-                        {log.by && (
-                          <p className="mt-1.5 text-[10px] text-slate-400">
-                            Updated by {log.by}
+                        {(log.personName || log.by || log.department) && (
+                          <p className="mt-1.5 text-[10px] text-slate-500 font-medium">
+                            By {log.personName || log.by}
+                            {log.department ? ` · Dept: ${log.department}` : ''}
                           </p>
                         )}
                       </div>
@@ -477,6 +490,35 @@ export default function EditorModal({
                   placeholder="e.g. Mouse click nahi ho raha. IP assign karna hai."
                   className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3.5 py-2.5 text-sm text-[#1F2533] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white resize-y"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Updated / Resolved By
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={80}
+                    value={personName}
+                    onChange={(e) => setPersonName(e.target.value)}
+                    placeholder="Person name"
+                    className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3 py-2 text-sm text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Department
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={60}
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    placeholder="e.g. CSE"
+                    className="w-full rounded-lg border border-slate-300 bg-[#F5F5FA] px-3 py-2 text-sm text-[#1F2533] focus:outline-none focus:ring-2 focus:ring-[#F84464]/40 focus:bg-white"
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">

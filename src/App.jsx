@@ -274,6 +274,7 @@ export default function App() {
       if (profileModal.mode === 'edit' && selectedLab && canEdit) {
         await updateDoc(doc(db, 'labs', selectedLab.id), {
           name: formValues.name,
+          department: formValues.department,
           location: formValues.location,
           ownerName: formValues.ownerName,
           ownerPhone: formValues.ownerPhone,
@@ -284,6 +285,7 @@ export default function App() {
         const now = new Date().toISOString();
         const created = await addDoc(labsCollection, {
           name: formValues.name,
+          department: formValues.department,
           location: formValues.location,
           ownerName: formValues.ownerName,
           ownerPhone: formValues.ownerPhone,
@@ -557,9 +559,11 @@ export default function App() {
     showToast('Default layout restored.');
   };
 
-  const handleSavePc = (pcId, { status, issues, notes }) => {
+  const handleSavePc = (pcId, { status, issues, notes, personName, department }) => {
     if (!canEdit) return;
     const now = new Date().toISOString();
+    const resolvedPerson = personName || selectedLab?.ownerName || user?.displayName || user?.email || 'Lab In-Charge';
+    const resolvedDept = department || selectedLab?.department || '';
     const next = { ...records };
     if (status === 'ok') {
       delete next[pcId];
@@ -577,7 +581,9 @@ export default function App() {
       issues: status === 'ok' ? [] : issues,
       notes,
       timestamp: now,
-      by: user?.displayName || user?.email || 'Lab In-Charge',
+      personName: resolvedPerson,
+      department: resolvedDept,
+      by: resolvedDept ? `${resolvedPerson} (${resolvedDept})` : resolvedPerson,
     };
     const nextHistory = {
       ...historyMap,
@@ -834,6 +840,11 @@ export default function App() {
 
             {selectedLab && (
               <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-slate-600 pl-1">
+                {selectedLab.department && (
+                  <span className="px-2 py-0.5 rounded-md bg-[#F5F5FA] border border-slate-200 font-bold text-[#333545]">
+                    {selectedLab.department}
+                  </span>
+                )}
                 <span className="flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-[#F84464]" />
                   <strong className="text-[#1F2533]">{selectedLab.location}</strong>
@@ -1354,6 +1365,8 @@ export default function App() {
         entry={editingPcId ? records[editingPcId] : null}
         history={editingPcId ? historyMap[editingPcId] || [] : []}
         asset={editingPcId ? assetsMap[editingPcId] || null : null}
+        defaultPersonName={selectedLab?.ownerName || user?.displayName || ''}
+        defaultDepartment={selectedLab?.department || ''}
         readOnly={!canEdit}
         onClose={() => setEditingPcId(null)}
         onSave={handleSavePc}
