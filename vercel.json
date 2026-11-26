@@ -1,8 +1,8 @@
 {
   "rewrites": [
     {
-      "source": "/",
-      "destination": "/Lab-PC-Tracker.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
