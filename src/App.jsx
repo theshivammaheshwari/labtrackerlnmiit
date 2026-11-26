@@ -18,12 +18,15 @@ import {
   LogIn,
   LogOut,
   Building2,
+  StickyNote,
+  Lock,
 } from 'lucide-react';
 import {
   auth,
   db,
   labsCollection,
   googleProvider,
+  collection,
   doc,
   addDoc,
   updateDoc,
@@ -50,6 +53,7 @@ import StatsBar from './components/StatsBar';
 import LayoutToolbar from './components/LayoutToolbar';
 import EditorModal from './components/EditorModal';
 import LabProfileModal from './components/LabProfileModal';
+import PrivateNotesModal from './components/PrivateNotesModal';
 
 const ALLOWED_DOMAIN = '@lnmiit.ac.in';
 const SELECTED_LAB_KEY = 'lab-tracker-selected-lab';
@@ -83,11 +87,15 @@ export default function App() {
   const [filter, setFilter] = useState('');
   const [search, setSearch] = useState('');
   const [arranging, setArranging] = useState(false);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState([]);
   const [picked, setPicked] = useState(null);
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [editingPcId, setEditingPcId] = useState(null);
   const [profileModal, setProfileModal] = useState({ open: false, mode: 'create' });
+  const [privateNotes, setPrivateNotes] = useState([]);
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
   const fileInputRef = useRef(null);
 
   const showToast = (msg) => setToast(msg);
@@ -147,6 +155,8 @@ export default function App() {
       localStorage.setItem(SELECTED_LAB_KEY, selectedLabId);
     }
     setArranging(false);
+    setBulkMode(false);
+    setBulkSelected([]);
     setPicked(null);
   }, [selectedLabId]);
 
@@ -157,6 +167,27 @@ export default function App() {
 
   const totalPcs = selectedLab?.totalPcs || DEFAULT_TOTAL_PCS;
   const canEdit = Boolean(user && selectedLab && user.uid === selectedLab.ownerUid);
+
+  // Private In-Charge Notes (ONLY fetched when user is the lab owner)
+  useEffect(() => {
+    if (!canEdit || !selectedLab?.id) {
+      setPrivateNotes([]);
+      setNotesModalOpen(false);
+      return;
+    }
+    const notesRef = collection(db, 'labs', selectedLab.id, 'privateNotes');
+    const q = query(notesRef, orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setPrivateNotes(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      },
+      (err) => {
+        console.error('Private notes listener error:', err);
+      }
+    );
+    return () => unsub();
+  }, [canEdit, selectedLab?.id]);
 
   const { records, layout } = useMemo(() => {
     if (!selectedLab) {
@@ -329,10 +360,126 @@ export default function App() {
     );
   };
 
+  const toggleBulkPc = (id) => {
+    setBulkSelected((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const placeBulkFromIndex = (startIndex) => {
+    if (!canEdit || bulkSelected.length === 0) return;
+    const seats = [...layout.seats];
+    const movingSet = new Set(bulkSelected);
+    // Clear selected PCs from their previous positions
+    for (let i = 0; i < seats.length; i++) {
+      if (seats[i] !== null && movingSet.has(seats[i])) {
+        seats[i] = null;
+      }
+    }
+    let placedCount = 0;
+    for (let i = startIndex; i < seats.length && placedCount < bulkSelected.length; i++) {
+      if (seats[i] === null) {
+        seats[i] = bulkSelected[placedCount];
+        placedCount++;
+      }
+    }
+    if (placedCount === 0) {
+      showToast('No empty seats available from that position.');
+      return;
+    }
+    setBulkSelected([]);
+    persistLabData(records, { ...layout, seats });
+    showToast(
+      placedCount < bulkSelected.length
+        ? `Placed ${placedCount} PC(s). Remaining had no empty seats.`
+        : `Placed ${placedCount} PC(s) in sequence!`
+    );
+  };
+
+  const handleSelectAllTray = () => {
+    setBulkSelected(unplacedIds);
+  };
+
+  const handleReturnSelectedToTray = () => {
+    if (!canEdit || bulkSelected.length === 0) return;
+    const selectedSet = new Set(bulkSelected);
+    const seats = layout.seats.map((id) => (id !== null && selectedSet.has(id) ? null : id));
+    const count = bulkSelected.length;
+    setBulkSelected([]);
+    persistLabData(records, { ...layout, seats });
+    showToast(`Moved ${count} PC(s) to tray.`);
+  };
+
+  const handleAutoFillEmpty = () => {
+    if (!canEdit || unplacedIds.length === 0) return;
+    const seats = [...layout.seats];
+    let idx = 0;
+    for (let i = 0; i < seats.length && idx < unplacedIds.length; i++) {
+      if (seats[i] === null) {
+        seats[i] = unplacedIds[idx++];
+      }
+    }
+    if (idx === 0) {
+      showToast('No empty seats available. Increase Rows/Cols first.');
+      return;
+    }
+    setBulkSelected([]);
+    persistLabData(records, { ...layout, seats });
+    showToast(`Auto-placed ${idx} PC(s) into empty seats!`);
+  };
+
+  const handleAddPrivateNote = async ({ title, body }) => {
+    if (!canEdit || !selectedLab?.id) return;
+    try {
+      await addDoc(collection(db, 'labs', selectedLab.id, 'privateNotes'), {
+        title,
+        body,
+        done: false,
+        createdAt: new Date().toISOString(),
+      });
+      showToast('Private note saved.');
+    } catch (err) {
+      console.error('Add private note error:', err);
+      showToast('Could not save private note. Check Firestore rules.');
+    }
+  };
+
+  const handleTogglePrivateNote = async (note) => {
+    if (!canEdit || !selectedLab?.id) return;
+    try {
+      await updateDoc(doc(db, 'labs', selectedLab.id, 'privateNotes', note.id), {
+        done: !note.done,
+      });
+    } catch (err) {
+      console.error('Toggle private note error:', err);
+    }
+  };
+
+  const handleDeletePrivateNote = async (noteId) => {
+    if (!canEdit || !selectedLab?.id) return;
+    try {
+      await deleteDoc(doc(db, 'labs', selectedLab.id, 'privateNotes', noteId));
+      showToast('Note deleted.');
+    } catch (err) {
+      console.error('Delete private note error:', err);
+    }
+  };
+
   const handleSeatClick = (index) => {
     if (!arranging || !canEdit) {
       const id = layout.seats[index];
       if (id) setEditingPcId(id);
+      return;
+    }
+    if (bulkMode) {
+      const id = layout.seats[index];
+      if (id) {
+        toggleBulkPc(id);
+      } else if (bulkSelected.length > 0) {
+        placeBulkFromIndex(index);
+      } else {
+        showToast('Select PCs first, then click an empty seat (+) to place them.');
+      }
       return;
     }
     if (picked !== null && picked !== layout.seats[index]) {
@@ -649,6 +796,21 @@ export default function App() {
               <>
                 <button
                   type="button"
+                  onClick={() => setNotesModalOpen(true)}
+                  className="px-3 py-2 rounded-lg bg-[#333545] hover:bg-[#1F2533] text-xs font-semibold text-white flex items-center gap-1.5 shadow-sm"
+                  title="Private In-Charge Notes (Only visible to you)"
+                >
+                  <Lock className="w-3.5 h-3.5 text-emerald-300" />
+                  <StickyNote className="w-3.5 h-3.5" />
+                  Private Notes
+                  {privateNotes.filter((n) => !n.done).length > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-[#F84464] text-[10px] font-mono">
+                      {privateNotes.filter((n) => !n.done).length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
                   onClick={() => setProfileModal({ open: true, mode: 'edit' })}
                   className="px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1.5"
                 >
@@ -703,8 +865,22 @@ export default function App() {
               onToggleArranging={() => {
                 if (!canEdit) return;
                 setArranging((v) => !v);
+                setBulkMode(false);
+                setBulkSelected([]);
                 setPicked(null);
               }}
+              bulkMode={bulkMode}
+              onToggleBulkMode={() => {
+                setBulkMode((v) => !v);
+                setBulkSelected([]);
+                setPicked(null);
+              }}
+              bulkCount={bulkSelected.length}
+              unplacedCount={unplacedIds.length}
+              onSelectAllTray={handleSelectAllTray}
+              onClearBulk={() => setBulkSelected([])}
+              onReturnSelectedToTray={handleReturnSelectedToTray}
+              onAutoFillEmpty={handleAutoFillEmpty}
               filter={filter}
               onFilterChange={setFilter}
               search={search}
@@ -796,14 +972,15 @@ export default function App() {
                         const dimmed =
                           !arranging &&
                           ((filter && state !== filter) || !matchesSearch(id));
-                        const isPicked = canEdit && arranging && picked === id;
+                        const isPicked = canEdit && arranging && !bulkMode && picked === id;
+                        const bulkOrder = canEdit && arranging && bulkMode ? bulkSelected.indexOf(id) : -1;
 
                         return (
                           <button
                             key={id}
                             type="button"
                             disabled={dimmed}
-                            draggable={canEdit && arranging}
+                            draggable={canEdit && arranging && !bulkMode}
                             onDragStart={(e) => {
                               if (!canEdit) return;
                               setDraggedId(id);
@@ -837,16 +1014,21 @@ export default function App() {
                               style.card
                             } ${style.glow} ${
                               dimmed ? 'opacity-20 grayscale pointer-events-none' : ''
-                            } ${canEdit && arranging ? 'cursor-grab active:cursor-grabbing' : ''} ${
-                              isPicked ? 'ring-2 ring-[#F84464] scale-[1.04]' : ''
+                            } ${canEdit && arranging && !bulkMode ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                              isPicked || bulkOrder >= 0 ? 'ring-2 ring-[#F84464] scale-[1.04]' : ''
                             } ${
                               isDropTarget
                                 ? 'ring-2 ring-[#F84464] scale-[1.05]'
                                 : ''
                             }`}
                           >
-                            {canEdit && arranging && (
+                            {canEdit && arranging && !bulkMode && (
                               <GripVertical className="w-3 h-3 opacity-50 absolute top-1 left-0.5" />
+                            )}
+                            {bulkOrder >= 0 && (
+                              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#F84464] text-white text-[10px] font-bold flex items-center justify-center shadow">
+                                {bulkOrder + 1}
+                              </span>
                             )}
                             <span className="font-mono font-bold text-[11px] sm:text-xs leading-none">
                               {dense ? String(id).padStart(2, '0') : pcName(id)}
@@ -907,30 +1089,39 @@ export default function App() {
                     {unplacedIds.map((id) => {
                       const state = records[id]?.status || 'ok';
                       const style = STATUS_STYLES[state];
-                      const isPicked = canEdit && arranging && picked === id;
+                      const isPicked = canEdit && arranging && !bulkMode && picked === id;
+                      const bulkOrder = canEdit && arranging && bulkMode ? bulkSelected.indexOf(id) : -1;
                       return (
                         <button
                           key={id}
                           type="button"
-                          draggable={canEdit && arranging}
+                          draggable={canEdit && arranging && !bulkMode}
                           onDragStart={(e) => {
-                            if (!canEdit) return;
+                            if (!canEdit || bulkMode) return;
                             setDraggedId(id);
                             e.dataTransfer.setData('text/plain', pcName(id));
                             e.dataTransfer.effectAllowed = 'move';
                           }}
                           onDragEnd={() => setDraggedId(null)}
-                          onClick={() =>
-                            canEdit && arranging
-                              ? setPicked((prev) => (prev === id ? null : id))
-                              : setEditingPcId(id)
-                          }
-                          className={`px-3 py-2 rounded-lg border-2 text-xs font-mono font-bold flex items-center gap-1.5 transition-all ${
+                          onClick={() => {
+                            if (canEdit && arranging) {
+                              if (bulkMode) toggleBulkPc(id);
+                              else setPicked((prev) => (prev === id ? null : id));
+                            } else {
+                              setEditingPcId(id);
+                            }
+                          }}
+                          className={`relative px-3 py-2 rounded-lg border-2 text-xs font-mono font-bold flex items-center gap-1.5 transition-all ${
                             style.card
-                          } ${isPicked ? 'ring-2 ring-[#F84464]' : ''}`}
+                          } ${isPicked || bulkOrder >= 0 ? 'ring-2 ring-[#F84464]' : ''}`}
                         >
                           <Monitor className="w-3.5 h-3.5" />
                           {pcName(id)}
+                          {bulkOrder >= 0 && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[#F84464] text-white text-[10px] leading-none">
+                              {bulkOrder + 1}
+                            </span>
+                          )}
                         </button>
                       );
                     })}
@@ -976,6 +1167,19 @@ export default function App() {
         onClose={() => setProfileModal({ open: false, mode: 'create' })}
         onSubmit={handleSaveLabProfile}
       />
+
+      {canEdit && (
+        <PrivateNotesModal
+          open={notesModalOpen}
+          labName={selectedLab?.name}
+          ownerEmail={user?.email}
+          notes={privateNotes}
+          onClose={() => setNotesModalOpen(false)}
+          onAddNote={handleAddPrivateNote}
+          onToggleDone={handleTogglePrivateNote}
+          onDeleteNote={handleDeletePrivateNote}
+        />
+      )}
 
       {toast && (
         <div className="fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-[#333545] text-white text-sm font-medium shadow-xl border border-white/10">

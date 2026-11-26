@@ -41,6 +41,7 @@ googleProvider.setCustomParameters({
 });
 
 export {
+  collection,
   doc,
   addDoc,
   setDoc,
