@@ -9,6 +9,34 @@
   }
 }
 
+.seat-map-wrap {
+  container-type: inline-size;
+}
+
+.seat-grid-row {
+  --cell: calc((100cqw - 28px) / var(--cols));
+  display: grid;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  gap: clamp(2px, calc(var(--cell) * 0.08), 8px);
+}
+
+.seat-tile {
+  min-height: clamp(26px, calc(var(--cell) * 0.92), 54px);
+  border-radius: clamp(4px, calc(var(--cell) * 0.14), 8px);
+  border-width: clamp(1px, calc(var(--cell) * 0.045), 2px);
+  padding: clamp(1px, calc(var(--cell) * 0.06), 4px);
+}
+
+.seat-code {
+  font-size: clamp(8px, calc(var(--cell) * 0.28), 12px);
+  line-height: 1;
+}
+
+.seat-status {
+  font-size: clamp(6px, calc(var(--cell) * 0.18), 10px);
+  line-height: 1.1;
+}
+
 ::-webkit-scrollbar {
   width: 7px;
   height: 7px;

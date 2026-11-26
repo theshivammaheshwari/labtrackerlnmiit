@@ -1008,30 +1008,24 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  <div className="mb-5 flex flex-col items-center">
+                  <div className="mb-4 flex flex-col items-center">
                     <div className="w-full max-w-md h-3 border-t-4 border-sky-300/80 rounded-t-[100%] shadow-[0_-6px_14px_-4px_rgba(56,189,248,0.35)]" />
                     <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400 text-center">
                       All eyes this way · Front of {selectedLab.name}
                     </span>
-                    {layout.cols > 6 && (
-                      <span className="sm:hidden mt-1 text-[10px] text-slate-400">
-                        Swipe left/right ↔ to view all {layout.cols} columns
-                      </span>
-                    )}
                   </div>
 
-                  <div className="space-y-2 overflow-x-auto pb-2 -mx-1 px-1">
+                  <div className="seat-map-wrap space-y-1.5 sm:space-y-2">
                     {rowsArray.map((rowSeats, rIdx) => (
-                      <div key={rIdx} className="flex items-center gap-2 sm:gap-3 min-w-max sm:min-w-0">
-                        <span className="sticky left-0 z-10 bg-white/95 backdrop-blur-sm w-6 shrink-0 text-center font-mono text-xs font-bold text-slate-500 py-1">
+                      <div
+                        key={rIdx}
+                        className="flex items-center gap-1.5 sm:gap-2.5"
+                        style={{ '--cols': layout.cols }}
+                      >
+                        <span className="w-5 shrink-0 text-center font-mono text-[10px] sm:text-xs font-bold text-slate-500">
                           {rowLabel(rIdx)}
                         </span>
-                        <div
-                          className="flex-1 grid gap-1.5 sm:gap-2"
-                          style={{
-                            gridTemplateColumns: `repeat(${layout.cols}, minmax(${dense ? '48px' : '56px'}, 1fr))`,
-                          }}
-                        >
+                        <div className="flex-1 seat-grid-row">
                       {rowSeats.map((id, cIdx) => {
                         const index = rIdx * layout.cols + cIdx;
                         const isDropTarget = canEdit && arranging && dragOverIndex === index;
@@ -1053,7 +1047,7 @@ export default function App() {
                                 if (draggedId !== null) placePC(draggedId, index);
                                 setDraggedId(null);
                               }}
-                              className={`min-h-[48px] sm:min-h-[54px] rounded-lg border border-dashed text-xs font-mono transition-all flex items-center justify-center ${
+                              className={`seat-tile border-dashed text-xs font-mono transition-all flex items-center justify-center ${
                                 isDropTarget
                                   ? 'border-[#F84464] bg-[#FFF0F3] text-[#F84464] scale-[1.03]'
                                   : 'border-slate-300 bg-slate-50 text-slate-400 hover:border-[#F84464] hover:text-[#F84464]'
@@ -1063,7 +1057,7 @@ export default function App() {
                               +
                             </button>
                           ) : (
-                            <div key={`spacer-${index}`} className="min-h-[48px] sm:min-h-[54px]" />
+                            <div key={`spacer-${index}`} className="seat-tile border-transparent" />
                           );
                         }
 
@@ -1111,7 +1105,7 @@ export default function App() {
                                 ? `${pcName(id)}: ${entry.issues.join(', ')}`
                                 : `${pcName(id)} · ${STATUS_LABELS[state]}`
                             }
-                            className={`relative min-h-[48px] sm:min-h-[54px] rounded-lg border-2 px-1 py-1 flex flex-col items-center justify-center gap-0.5 transition-all duration-150 ${
+                            className={`seat-tile relative flex flex-col items-center justify-center gap-0.5 transition-all duration-150 overflow-hidden ${
                               style.card
                             } ${style.glow} ${
                               dimmed ? 'opacity-20 grayscale pointer-events-none' : ''
@@ -1124,18 +1118,21 @@ export default function App() {
                             }`}
                           >
                             {canEdit && arranging && !bulkMode && (
-                              <GripVertical className="w-3 h-3 opacity-50 absolute top-1 left-0.5" />
+                              <GripVertical className="w-3 h-3 opacity-50 absolute top-1 left-0.5 hidden sm:block" />
                             )}
                             {bulkOrder >= 0 && (
-                              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#F84464] text-white text-[10px] font-bold flex items-center justify-center shadow">
+                              <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-[#F84464] text-white text-[9px] sm:text-[10px] font-bold flex items-center justify-center shadow">
                                 {bulkOrder + 1}
                               </span>
                             )}
-                            <span className="font-mono font-bold text-[11px] sm:text-xs leading-none">
-                              {dense ? String(id).padStart(2, '0') : pcName(id)}
+                            <span className="seat-code font-mono font-bold">
+                              <span className="sm:hidden">{String(id).padStart(2, '0')}</span>
+                              <span className="hidden sm:inline">
+                                {dense ? String(id).padStart(2, '0') : pcName(id)}
+                              </span>
                             </span>
                             {!dense && (
-                              <span className="text-[9px] sm:text-[10px] font-medium opacity-85 truncate max-w-full">
+                              <span className="seat-status hidden sm:block font-medium opacity-85 truncate max-w-full">
                                 {STATUS_LABELS[state]}
                               </span>
                             )}
